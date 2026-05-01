@@ -3458,6 +3458,31 @@ const GRP_SEC = [
 // ═══════════════════════════════════════════════════════════════════════
 //  FIREBASE CONFIG
 // ═══════════════════════════════════════════════════════════════════════
+//
+//  Firebase Realtime Database Security Rules (paste in Firebase Console):
+//
+//  {
+//    "rules": {
+//      "carBalance": {
+//        ".read": true,
+//        "adminHash": { ".write": true },
+//        "users": { ".write": true },
+//        "settings": { ".write": true },
+//        "data": {
+//          "$month": {
+//            ".write": true,
+//            ".indexOn": ["date"]
+//          }
+//        }
+//      }
+//    }
+//  }
+//
+//  NOTE: Auth is app-level (password hash check), not Firebase Auth.
+//  For production, migrate to Firebase Auth with email/password and
+//  use request.auth.uid in rules. Rate limiting and validation should
+//  also be added via Firebase App Check.
+//
 const firebaseConfig = {
   databaseURL:
     "https://monthly-car-balance-default-rtdb.asia-southeast1.firebasedatabase.app/",
@@ -3504,6 +3529,10 @@ let cur = "";
 let undoStack = [];
 let dirty = false;
 let CH = {};
+let reportFilter = { preset: "this-month", from: "", to: "", compare: "prev-period" };
+let rptMs = [];    // active filtered months for current render cycle
+let rptFocus = ""; // focus month (last of rptMs) for single-month reports
+let auctionFilter = { from: "", to: "", preset: "all" }; // independent day-level filter for auction report
 
 // ════════════════════════════════════════════════════
 //  UTILS
@@ -3555,6 +3584,10 @@ function setDirty(v) {
   const el = document.getElementById("sv-badge");
   el.textContent = v ? "● Unsaved" : "✓ Saved";
   el.className = "sv " + (v ? "dirty" : "ok");
+  const saveBtn = document.getElementById("save-button");
+  if (saveBtn) {
+    saveBtn.classList.toggle("dirty-pulse", v);
+  }
 }
 
 // ════════════════════════════════════════════════════
@@ -3589,18 +3622,22 @@ function buildHist() {
     .sort((a, b) => a.d.localeCompare(b.d));
 
   sortedData.forEach((r) => {
+    if (!r.v || !Array.isArray(r.v)) return;
     const key = r.d.slice(0, 7);
     if (!DB[key]) DB[key] = [];
-    const del = LOCS.map((_, i) => r.v[i * 2]);
-    const imp = LOCS.map((_, i) => r.v[i * 2 + 1]);
+    const del = [];
+    const imp = [];
+    for (let i = 0; i < LOCS.length; i++) {
+      del.push((r.v[i * 2]) || 0);
+      imp.push((r.v[i * 2 + 1]) || 0);
+    }
+    if (del.length !== LOCS.length || imp.length !== LOCS.length) return;
     let locBals;
     let isDay1 = false;
     if (r.ob) {
-      // Day 1 of month: opening balances given
       locBals = r.ob.slice();
       isDay1 = true;
     } else {
-      // Day N: calc from previous row
       const prev = DB[key].slice(-1)[0];
       locBals = calcLocBals(prev.bal, prev.del, prev.imp);
     }
@@ -3612,7 +3649,7 @@ function buildHist() {
       al: r.al || "",
       av: r.av || "",
     };
-    if (isDay1) newRow.ob = locBals.slice(); // store original opening balance
+    if (isDay1) newRow.ob = locBals.slice();
     DB[key].push(newRow);
   });
 
@@ -3620,19 +3657,54 @@ function buildHist() {
   checkAndFixMonthTransitions();
 }
 
+function validateDB() {
+  let issues = [];
+  Object.keys(DB).forEach((k) => {
+    if (!/^\d{4}-\d{2}$/.test(k)) {
+      issues.push("Invalid month key: " + k);
+      return;
+    }
+    if (!Array.isArray(DB[k])) {
+      issues.push("Month " + k + " is not an array");
+      return;
+    }
+    DB[k].forEach((r, idx) => {
+      if (!r.date) issues.push(k + " row " + idx + " missing date");
+      if (!Array.isArray(r.del) || r.del.length !== LOCS.length) issues.push(k + " row " + idx + " invalid del[]");
+      if (!Array.isArray(r.imp) || r.imp.length !== LOCS.length) issues.push(k + " row " + idx + " invalid imp[]");
+      if (!Array.isArray(r.bal) || r.bal.length !== LOCS.length) issues.push(k + " row " + idx + " invalid bal[]");
+      r.del = r.del.map((v) => isNaN(v) ? 0 : v);
+      r.imp = r.imp.map((v) => isNaN(v) ? 0 : v);
+      r.bal = r.bal.map((v) => isNaN(v) ? 0 : v);
+    });
+  });
+  if (issues.length) {
+    console.warn("DB validation issues:", issues);
+    if (issues.length > 10) {
+      showErrorOverlay("Data corruption detected (" + issues.length + " issues). Resetting to defaults.");
+      localStorage.removeItem(LS);
+      return true;
+    }
+  }
+  return false;
+}
+
 function loadLS() {
   try {
     const raw = localStorage.getItem(LS);
     if (!raw) return;
     const s = JSON.parse(raw);
-    if (s.db)
+    if (s.db && typeof s.db === "object")
       Object.keys(s.db).forEach((k) => {
-        DB[k] = s.db[k];
+        if (Array.isArray(s.db[k])) DB[k] = s.db[k];
       });
-    if (s.sett) Object.assign(sett, s.sett);
-    if (s.users) users = s.users;
+    if (s.sett && typeof s.sett === "object") Object.assign(sett, s.sett);
+    if (s.users && typeof s.users === "object") users = s.users;
     if (s.loggedIn) loggedIn = s.loggedIn;
-  } catch (e) {}
+  } catch (e) {
+    console.error("localStorage data corrupted, clearing:", e);
+    try { localStorage.removeItem(LS); } catch (_) {}
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3641,7 +3713,6 @@ function loadLS() {
 
 function loadFromFirebase(callback) {
   if (!firebaseDb) {
-    console.log("Firebase not initialized, using localStorage");
     loadLS();
     if (callback) callback();
     return;
@@ -3663,17 +3734,13 @@ function loadFromFirebase(callback) {
         if (data.loggedIn) loggedIn = data.loggedIn;
         if (data.adminHash) {
           ADMIN_HASH = data.adminHash;
-          console.log("Loaded admin hash from Firebase");
         }
-        console.log("Loaded from Firebase");
       } else {
         loadLS();
-        console.log("No Firebase data, using localStorage");
       }
       if (callback) callback();
     })
     .catch((e) => {
-      console.log("Failed to load from Firebase, using localStorage", e);
       loadLS();
       if (callback) callback();
     });
@@ -3694,11 +3761,9 @@ function saveToFirebase() {
     .ref("carBalance")
     .set(dataToSave)
     .then(() => {
-      console.log("Saved to Firebase");
       return true;
     })
     .catch((e) => {
-      console.log("Failed to save to Firebase", e);
       return false;
     });
 }
@@ -4387,7 +4452,11 @@ function submitTransferForm() {
 }
 
 function getClosing(row) {
-  return calcClosing(row.bal, row.del, row.imp);
+  if (!row) return 0;
+  const bal = Array.isArray(row.bal) ? row.bal : LOCS.map(() => 0);
+  const del = Array.isArray(row.del) ? row.del : LOCS.map(() => 0);
+  const imp = Array.isArray(row.imp) ? row.imp : LOCS.map(() => 0);
+  return calcClosing(bal, del, imp);
 }
 
 function summ(key) {
@@ -4406,13 +4475,19 @@ function summ(key) {
   const dl = LOCS.map(() => 0),
     il = LOCS.map(() => 0);
   rows.forEach((r) => {
-    r.del.forEach((v, i) => {
-      td += v;
-      dl[i] += v;
+    const d = Array.isArray(r.del) ? r.del : LOCS.map(() => 0);
+    const i = Array.isArray(r.imp) ? r.imp : LOCS.map(() => 0);
+    d.forEach((v, j) => {
+      if (j < LOCS.length) {
+        td += v || 0;
+        dl[j] += v || 0;
+      }
     });
-    r.imp.forEach((v, i) => {
-      ti += v;
-      il[i] += v;
+    i.forEach((v, j) => {
+      if (j < LOCS.length) {
+        ti += v || 0;
+        il[j] += v || 0;
+      }
     });
   });
   const last = rows.slice(-1)[0];
@@ -4421,7 +4496,7 @@ function summ(key) {
     bal: lastClosing,
     del: td,
     imp: ti,
-    end: last.bal.slice(),
+    end: (Array.isArray(last.bal) ? last.bal : LOCS.map(() => 0)).slice(),
     dl,
     il,
   };
@@ -4572,27 +4647,23 @@ function resetLoginAttempts() {
   loginAttempts = 0;
 }
 
-function doLoginSimple(userid, password) {
+async function doLoginSimple(userid, password) {
   if (checkRateLimit()) {
     showError("Too many failed attempts. Please wait 1 minute.");
     return;
   }
 
-  // Sanitize inputs
   userid = sanitizeInput(userid);
   if (!validateInput(userid, "username")) {
     showError("Invalid username format");
     return;
   }
 
-  console.log("Attempting login with:", userid);
-  if (checkCred(userid, password)) {
-    console.log("Login successful, setting state");
+  if (await checkCred(userid, password)) {
     resetLoginAttempts();
     isLoggedIn = true;
     currentUser = userid;
 
-    // Secure session token
     const sessionToken = crypto.randomUUID
       ? crypto.randomUUID()
       : "sess_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
@@ -4604,13 +4675,10 @@ function doLoginSimple(userid, password) {
     showSuccess("Login successful! Refreshing...");
     updateLoginUI();
 
-    console.log("Setting up auto-refresh");
     setTimeout(() => {
-      console.log("Refreshing now...");
       window.location.reload();
     }, 500);
   } else {
-    console.log("Login failed");
     recordFailedLogin();
     showError("Invalid credentials");
   }
@@ -4650,33 +4718,24 @@ function checkLoginStatus() {
   const loginTime = localStorage.getItem("loginTime");
   const sessionToken = localStorage.getItem("sessionToken");
 
-  console.log("Checking login status:", {
-    savedLogin,
-    savedUser,
-    loginTime,
-  });
 
   if (savedLogin === "true" && savedUser && loginTime && sessionToken) {
     const timeDiff = Date.now() - parseInt(loginTime);
     const maxSessionTime = 60 * 60 * 1000; // 1 hour
 
-    console.log("Time diff:", timeDiff, "Max time:", maxSessionTime);
 
     if (timeDiff < maxSessionTime && savedUser === ADMIN_USER) {
       isLoggedIn = true;
       currentUser = savedUser;
-      console.log("Login restored successfully");
       return true;
     } else {
-      console.log("Session expired or invalid user");
       logout();
     }
   }
-  console.log("No valid login found");
   return false;
 }
 
-function changeAdminPassword() {
+async function changeAdminPassword() {
   if (!isLoggedIn) {
     showError("Please login first");
     return;
@@ -4686,7 +4745,9 @@ function changeAdminPassword() {
   const newPass = document.getElementById("new-password").value;
   const confirmPass = document.getElementById("confirm-password").value;
 
-  if (hash(currentPass) !== ADMIN_HASH) {
+  const shaCurrent = await sha256(currentPass);
+  const legacyCurrent = hash(currentPass);
+  if (shaCurrent !== ADMIN_HASH && legacyCurrent !== ADMIN_HASH) {
     showError("Current password is incorrect");
     return;
   }
@@ -4701,24 +4762,20 @@ function changeAdminPassword() {
     return;
   }
 
-  ADMIN_HASH = hash(newPass);
+  ADMIN_HASH = await sha256(newPass);
   localStorage.setItem("adminHash", ADMIN_HASH);
 
-  // Sync with Firebase if available
   if (firebaseDb && isLoggedIn) {
     firebaseDb
       .ref("carBalance/adminHash")
       .set(ADMIN_HASH)
       .then(() => {
-        console.log("Admin password synced to Firebase");
       })
       .catch((e) => {
-        console.log("Failed to sync admin password", e);
         showError("Password changed but cloud sync failed", "warning");
       });
   }
 
-  // Clear password fields
   document.getElementById("current-password").value = "";
   document.getElementById("new-password").value = "";
   document.getElementById("confirm-password").value = "";
@@ -4732,9 +4789,21 @@ function changeAdminPassword() {
 function isAdmin(u) {
   return u === ADMIN_USER;
 }
-function checkCred(u, p) {
-  if (u === ADMIN_USER && hash(p) === ADMIN_HASH) return true;
-  return users[u] && users[u] === hash(p);
+async function checkCred(u, p) {
+  const shaHash = await sha256(p);
+  if (u === ADMIN_USER && shaHash === ADMIN_HASH) return true;
+  if (users[u] && users[u] === shaHash) return true;
+  if (u === ADMIN_USER && hash(p) === ADMIN_HASH) {
+    ADMIN_HASH = shaHash;
+    localStorage.setItem("adminHash", ADMIN_HASH);
+    return true;
+  }
+  if (users[u] && users[u] === hash(p)) {
+    users[u] = shaHash;
+    saveLS();
+    return true;
+  }
+  return false;
 }
 
 function showLogin(reason = "edit") {
@@ -4762,7 +4831,7 @@ function requireLogin(cb) {
 // ════════════════════════════════════════════════════
 //  USER MANAGEMENT  (max 3 + admin)
 // ════════════════════════════════════════════════════
-function addUser() {
+async function addUser() {
   const u = document.getElementById("s-user").value.trim();
   const p = document.getElementById("s-pass").value;
   const p2 = document.getElementById("s-pass2").value;
@@ -4788,7 +4857,7 @@ function addUser() {
     return;
   }
   err.style.display = "none";
-  users[u] = hash(p);
+  users[u] = await sha256(p);
   document.getElementById("ov-setup").classList.remove("on");
   saveLS();
   renderSettings();
@@ -5502,9 +5571,9 @@ function renderTable() {
 //  CHARTS
 // ════════════════════════════════════════════════════
 function killCharts() {
-  ["c-trend", "c-di", "c-loc", "c-daily", "c-net"].forEach((id) => {
+  ["c-trend", "c-cm-di", "c-cm-bal", "c-cmp", "c-loc", "c-loc-di", "c-net"].forEach((id) => {
     if (CH[id]) {
-      CH[id].destroy();
+      try { CH[id].destroy(); } catch (e) { console.warn("Chart destroy failed:", id); }
       delete CH[id];
     }
   });
@@ -5719,12 +5788,27 @@ function updateAdvancedMetrics() {
   if (riskScore) riskScore.textContent = (Math.random() * 4 + 4).toFixed(1);
 }
 
+function safeChart(canvasId, config) {
+  const el = document.getElementById(canvasId);
+  if (!el) {
+    console.warn("Canvas missing:", canvasId);
+    return null;
+  }
+  try {
+    return new Chart(el, config);
+  } catch (e) {
+    console.error("Chart failed for", canvasId, e);
+    return null;
+  }
+}
+
 function renderCharts() {
   showLoading("Generating charts...");
 
   setTimeout(() => {
-    killCharts();
-    const ms = months();
+    try {
+      killCharts();
+      const ms = months();
     const lbls = ms.map((k) => {
       const [y, m] = k.split("-").map(Number);
       return MO[m - 1] + "'" + String(y).slice(2);
@@ -5739,56 +5823,30 @@ function renderCharts() {
     const cs = summ(cur);
     const cr = DB[cur] || [];
 
-    // Professional chart base configuration
     const base = {
       responsive: true,
       maintainAspectRatio: true,
       aspectRatio: 2,
-      animation: {
-        duration: 800,
-        easing: "easeInOutQuart",
-      },
-      interaction: {
-        mode: "index",
-        intersect: false,
-      },
+      animation: { duration: 600, easing: "easeInOutQuart" },
+      interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
           display: false,
           position: "bottom",
-          labels: {
-            font: { size: 11 },
-            padding: 8,
-            usePointStyle: true,
-            pointStyle: "circle",
-          },
+          labels: { font: { size: 11 }, padding: 8, usePointStyle: true, pointStyle: "circle" },
         },
         tooltip: {
-          backgroundColor: "rgba(31, 41, 55, 0.95)",
-          titleColor: "#fff",
-          bodyColor: "#fff",
-          borderColor: "#374151",
-          borderWidth: 1,
-          cornerRadius: 8,
-          displayColors: true,
-          padding: 12,
-          titleFont: {
-            size: 12,
-            weight: "bold",
-          },
-          bodyFont: {
-            size: 11,
-          },
+          backgroundColor: "rgba(31,41,55,0.95)",
+          titleColor: "#fff", bodyColor: "#fff",
+          borderColor: "#374151", borderWidth: 1, cornerRadius: 8,
+          displayColors: true, padding: 12,
+          titleFont: { size: 12, weight: "bold" }, bodyFont: { size: 11 },
           callbacks: {
-            label: function (context) {
-              let label = context.dataset.label || "";
-              if (label) {
-                label += ": ";
-              }
-              if (context.parsed.y !== null) {
-                label += context.parsed.y.toLocaleString();
-              }
-              return label;
+            label: function (ctx) {
+              let lbl = ctx.dataset.label || "";
+              if (lbl) lbl += ": ";
+              if (ctx.parsed.y !== null) lbl += ctx.parsed.y.toLocaleString();
+              return lbl;
             },
           },
         },
@@ -5796,324 +5854,221 @@ function renderCharts() {
       scales: {
         x: {
           grid: { display: false },
-          ticks: {
-            font: { size: 10 },
-            color: "#6b7280",
-          },
-          title: {
-            display: true,
-            font: {
-              size: 11,
-              weight: "600",
-              color: "#374151",
-            },
-            color: "#374151",
-          },
+          ticks: { font: { size: 10 }, color: "#6b7280" },
+          title: { display: true, font: { size: 11, weight: "600" }, color: "#374151" },
         },
         y: {
-          grid: {
-            color: "rgba(229, 231, 235, 0.5)",
-            drawBorder: false,
-          },
-          ticks: {
-            font: { size: 10 },
-            color: "#6b7280",
-          },
-          title: {
-            display: true,
-            font: {
-              size: 11,
-              weight: "600",
-              color: "#374151",
-            },
-            color: "#374151",
-          },
+          grid: { color: "rgba(229,231,235,0.5)", drawBorder: false },
+          ticks: { font: { size: 10 }, color: "#6b7280" },
+          title: { display: true, font: { size: 11, weight: "600" }, color: "#374151" },
         },
       },
     };
 
-    // 1. Balance Trend Chart
-    CH["c-trend"] = new Chart(document.getElementById("c-trend"), {
+    const curM = cr.map((r) => parseInt(r.date.slice(8)));
+    const curD = cr.map((r) => r.del.reduce((a, b) => a + b, 0));
+    const curI = cr.map((r) => r.imp.reduce((a, b) => a + b, 0));
+    const curB = cr.map((r) => getClosing(r));
+
+    // 1. Current Month: Daily Receive vs Delivery
+    CH["c-cm-di"] = safeChart("c-cm-di", {
+      type: "bar",
+      data: {
+        labels: curM.map((d) => String(d)),
+        datasets: [
+          { label: "Receive", data: curI, backgroundColor: "rgba(239,68,68,0.75)", borderRadius: 3 },
+          { label: "Delivery", data: curD, backgroundColor: "rgba(34,197,94,0.75)", borderRadius: 3 },
+        ],
+      },
+      options: {
+        ...base,
+        plugins: {
+          ...base.plugins,
+          legend: { display: true, position: "top", labels: { font: { size: 10 }, padding: 10, usePointStyle: true, pointStyle: "rect" } },
+        },
+        scales: {
+          ...base.scales,
+          x: { ...base.scales.x, title: { ...base.scales.x.title, text: "Day" } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Vehicles" }, beginAtZero: true },
+        },
+      },
+    });
+
+    // 2. Current Month: Daily Closing Balance
+    CH["c-cm-bal"] = safeChart("c-cm-bal", {
       type: "line",
       data: {
-        labels: lbls,
-        datasets: [
-          {
-            label: "Closing Balance",
-            data: ebs,
-            borderColor: "#3b82f6",
-            backgroundColor: "rgba(59, 130, 246, 0.1)",
-            fill: true,
-            tension: 0.3,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            pointBackgroundColor: "#3b82f6",
-            pointBorderColor: "#fff",
-            pointBorderWidth: 2,
-            pointHoverBackgroundColor: "#fff",
-            pointHoverBorderColor: "#3b82f6",
-            pointHoverBorderWidth: 3,
-          },
-        ],
+        labels: curM.map((d) => String(d)),
+        datasets: [{
+          label: "Closing Balance", data: curB,
+          borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.1)",
+          fill: true, tension: 0.25, pointRadius: cr.map((r) => (isRed(r.date) ? 4 : 2)),
+          pointBackgroundColor: cr.map((r) => (isRed(r.date) ? "#ef4444" : "#3b82f6")),
+          pointBorderColor: "#fff", pointBorderWidth: 2,
+        }],
       },
       options: {
         ...base,
-        plugins: {
-          ...base.plugins,
-          legend: { display: false },
-          tooltip: {
-            ...base.plugins.tooltip,
-            callbacks: {
-              title: function (context) {
-                return "Month: " + context[0].label;
-              },
-              label: function (c) {
-                return "Balance: " + c.raw.toLocaleString();
-              },
-            },
-          },
-        },
         scales: {
           ...base.scales,
-          y: {
-            ...base.scales.y,
-            title: {
-              ...base.scales.y.title,
-              text: "Closing Balance",
-            },
-          },
+          x: { ...base.scales.x, title: { ...base.scales.x.title, text: "Day" } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Balance" } },
         },
       },
     });
 
-    // 2. Delivery vs Receive Chart
-    CH["c-di"] = new Chart(document.getElementById("c-di"), {
+    // 3. Month Comparison: Current vs Previous vs Same Month Last Year
+    const [cy, cm] = cur.split("-").map(Number);
+    const prevKey = cm > 1 ? mk(cy, cm - 1) : mk(cy - 1, 12);
+    const lastYearKey = mk(cy - 1, cm);
+    const hasPrev = DB[prevKey] && DB[prevKey].length;
+    const hasLY = DB[lastYearKey] && DB[lastYearKey].length;
+    const cmpLbls = ["Current"];
+    const cmpDel = [cs.del];
+    const cmpImp = [cs.imp];
+    const cmpBal = [cs.bal];
+    if (hasPrev) {
+      const ps = summ(prevKey);
+      const [, pm] = prevKey.split("-").map(Number);
+      cmpLbls.push(MO[pm - 1] + " Prev");
+      cmpDel.push(ps.del); cmpImp.push(ps.imp); cmpBal.push(ps.bal);
+    }
+    if (hasLY) {
+      const lys = summ(lastYearKey);
+      cmpLbls.push(MO[cm - 1] + " LY");
+      cmpDel.push(lys.del); cmpImp.push(lys.imp); cmpBal.push(lys.bal);
+    }
+    CH["c-cmp"] = safeChart("c-cmp", {
       type: "bar",
       data: {
-        labels: lbls,
+        labels: cmpLbls,
         datasets: [
-          {
-            label: "Receive",
-            data: imps,
-            backgroundColor: "rgba(239, 68, 68, 0.8)",
-            borderRadius: 4,
-          },
-          {
-            label: "Delivery",
-            data: dels,
-            backgroundColor: "rgba(34, 197, 94, 0.8)",
-            borderRadius: 4,
-          },
+          { label: "Receive", data: cmpImp, backgroundColor: "rgba(239,68,68,0.8)", borderRadius: 4 },
+          { label: "Delivery", data: cmpDel, backgroundColor: "rgba(34,197,94,0.8)", borderRadius: 4 },
+          { label: "Closing Balance", data: cmpBal, type: "line", borderColor: "#3b82f6", backgroundColor: "transparent",
+            pointRadius: 5, pointBackgroundColor: "#3b82f6", tension: 0.2, yAxisID: "y1" },
         ],
       },
       options: {
         ...base,
         plugins: {
           ...base.plugins,
-          legend: {
-            display: true,
-            position: "bottom",
-            labels: {
-              font: { size: 11 },
-              padding: 12,
-              usePointStyle: true,
-              pointStyle: "rect",
-            },
-          },
+          legend: { display: true, position: "top", labels: { font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: "rect" } },
         },
         scales: {
           ...base.scales,
-          y: {
-            ...base.scales.y,
-            title: {
-              ...base.scales.y.title,
-              text: "Quantity",
-            },
-          },
+          x: { ...base.scales.x, title: { display: false } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Deliveries / Receive" }, beginAtZero: true },
+          y1: { position: "right", grid: { display: false }, ticks: { font: { size: 10 }, color: "#6b7280", callback: (v) => v.toLocaleString() },
+            title: { display: true, text: "Closing Balance", font: { size: 11, weight: "600" }, color: "#3b82f6" } },
         },
       },
     });
 
-    // 3. Location Balance Chart
+    // 4. Location Closing Balance (horizontal bar)
     const lcols = LOCS.map((l) => LOC_CFG[l].bg);
-    const locationBalances = LOCS.map((loc, li) => {
-      const rows = DB[cur] || [];
-      const last = rows.slice(-1)[0] || { bal: LOCS.map(() => 0) };
+    const locBals = LOCS.map((_, li) => {
+      const last = cr.slice(-1)[0] || { bal: LOCS.map(() => 0) };
       return last.bal[li];
     });
-
-    CH["c-loc"] = new Chart(document.getElementById("c-loc"), {
+    CH["c-loc"] = safeChart("c-loc", {
       type: "bar",
       data: {
-        labels: LOCS.map((l) => l), // Full location names
-        datasets: [
-          {
-            label: "Current Balance",
-            data: locationBalances,
-            backgroundColor: lcols,
-            borderRadius: 4,
-            borderWidth: 1,
-            borderColor: "rgba(0, 0, 0, 0.1)",
-          },
-        ],
+        labels: LOCS,
+        datasets: [{ label: "Balance", data: locBals, backgroundColor: lcols, borderRadius: 4, borderWidth: 1, borderColor: "rgba(0,0,0,0.1)" }],
       },
       options: {
         ...base,
         indexAxis: "y",
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            ...base.plugins.tooltip,
-            callbacks: {
-              label: function (c) {
-                return "Balance: " + c.raw.toLocaleString();
-              },
-            },
-          },
-        },
         scales: {
-          ...base.scales,
-          x: {
-            ...base.scales.x,
-            title: {
-              ...base.scales.x.title,
-              text: "Balance",
-            },
-            beginAtZero: true,
-            ticks: {
-              ...base.scales.x.ticks,
-              callback: function (value) {
-                return value.toLocaleString();
-              },
-            },
-          },
-          y: {
-            ...base.scales.y,
-            title: {
-              ...base.scales.y.title,
-              text: "Location",
-            },
-          },
+          x: { ...base.scales.x, title: { ...base.scales.x.title, text: "Balance" }, beginAtZero: true, ticks: { ...base.scales.x.ticks, callback: (v) => v.toLocaleString() } },
+          y: { ...base.scales.y, title: { display: false }, ticks: { font: { size: 9 }, color: "#374151" } },
         },
       },
     });
 
-    // 4. Daily Balance Chart
-    const dlbls = cr.map((r) => r.date.slice(8));
-    const dbals = cr.map((r) => getClosing(r));
-    CH["c-daily"] = new Chart(document.getElementById("c-daily"), {
-      type: "line",
-      data: {
-        labels: dlbls,
-        datasets: [
-          {
-            label: "Daily Balance",
-            data: dbals,
-            borderColor: "#8b5cf6",
-            backgroundColor: "rgba(139, 92, 246, 0.1)",
-            fill: true,
-            tension: 0.2,
-            pointRadius: cr.map((r) => (isRed(r.date) ? 4 : 2)),
-            pointBackgroundColor: cr.map((r) =>
-              isRed(r.date) ? "#ef4444" : "#8b5cf6",
-            ),
-            pointBorderColor: "#fff",
-            pointBorderWidth: 2,
-          },
-        ],
-      },
-      options: {
-        ...base,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            ...base.plugins.tooltip,
-            callbacks: {
-              title: function (context) {
-                return "Day: " + context[0].label;
-              },
-              label: function (c) {
-                return "Balance: " + c.raw.toLocaleString();
-              },
-            },
-          },
-        },
-        scales: {
-          ...base.scales,
-          x: {
-            ...base.scales.x,
-            title: {
-              ...base.scales.x.title,
-              text: "Day of Month",
-            },
-            ticks: {
-              ...base.scales.x.ticks,
-              maxTicksLimit: 15,
-            },
-          },
-          y: {
-            ...base.scales.y,
-            title: {
-              ...base.scales.y.title,
-              text: "Balance",
-            },
-          },
-        },
-      },
-    });
-
-    // 6. Net Change Chart
-    CH["c-net"] = new Chart(document.getElementById("c-net"), {
+    // 5. Location Receive vs Delivery grouped bar
+    const locDels = LOCS.map((_, li) => cr.reduce((s, r) => s + r.del[li], 0));
+    const locImps = LOCS.map((_, li) => cr.reduce((s, r) => s + r.imp[li], 0));
+    CH["c-loc-di"] = safeChart("c-loc-di", {
       type: "bar",
       data: {
-        labels: lbls,
+        labels: LOCS,
         datasets: [
-          {
-            label: "Net Change",
-            data: nets,
-            backgroundColor: nets.map((n) =>
-              n > 0 ? "rgba(239, 68, 68, 0.8)" : "rgba(34, 197, 94, 0.8)",
-            ),
-            borderRadius: 4,
-          },
+          { label: "Receive", data: locImps, backgroundColor: "rgba(239,68,68,0.7)", borderRadius: 3 },
+          { label: "Delivery", data: locDels, backgroundColor: "rgba(34,197,94,0.7)", borderRadius: 3 },
         ],
       },
       options: {
         ...base,
         plugins: {
           ...base.plugins,
-          legend: { display: false },
-          tooltip: {
-            ...base.plugins.tooltip,
-            callbacks: {
-              label: function (c) {
-                const change = c.raw > 0 ? "+" + c.raw : c.raw;
-                return "Net Change: " + change.toLocaleString();
-              },
-            },
-          },
+          legend: { display: true, position: "top", labels: { font: { size: 10 }, padding: 10, usePointStyle: true, pointStyle: "rect" } },
         },
         scales: {
-          ...base.scales,
-          y: {
-            ...base.scales.y,
-            title: {
-              ...base.scales.y.title,
-              text: "Net Change",
-            },
-          },
+          x: { ...base.scales.x, title: { display: false }, ticks: { font: { size: 9 }, color: "#374151" } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Vehicles" }, beginAtZero: true },
         },
       },
     });
 
-    // Render Quick Stats
-    renderChartQuickStats(ms, cs);
+    // 6. Balance Trend (all months)
+    CH["c-trend"] = safeChart("c-trend", {
+      type: "line",
+      data: {
+        labels: lbls,
+        datasets: [{
+          label: "Closing Balance", data: ebs,
+          borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.1)",
+          fill: true, tension: 0.3, pointRadius: 4, pointHoverRadius: 6,
+          pointBackgroundColor: "#3b82f6", pointBorderColor: "#fff", pointBorderWidth: 2,
+        }],
+      },
+      options: {
+        ...base,
+        scales: {
+          ...base.scales,
+          x: { ...base.scales.x, ticks: { ...base.scales.x.ticks, maxTicksLimit: 12 } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Balance" } },
+        },
+      },
+    });
 
-    // Render Location Performance
-    renderLocationPerformance();
+    // 7. Net Flow per month
+    CH["c-net"] = safeChart("c-net", {
+      type: "bar",
+      data: {
+        labels: lbls,
+        datasets: [{
+          label: "Net Change", data: nets,
+          backgroundColor: nets.map((n) => (n >= 0 ? "rgba(239,68,68,0.8)" : "rgba(34,197,94,0.8)")),
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        ...base,
+        scales: {
+          x: { ...base.scales.x, title: { display: false }, ticks: { font: { size: 9 }, color: "#374151", maxTicksLimit: 8 } },
+          y: { ...base.scales.y, title: { ...base.scales.y.title, text: "Net Change" } },
+        },
+      },
+    });
+
+    renderChartQuickStats(ms, cs);
+    renderLocSummaryTable();
+
+    const pl = document.getElementById("chart-period-lbl");
+    if (pl) {
+      pl.textContent = lbls.length + " months loaded";
+    }
 
     hideLoading();
-  }, 500);
+    } catch (e) {
+      console.error("renderCharts error:", e);
+      hideLoading();
+      showErrorOverlay("Charts failed to render: " + e.message);
+    }
+  }, 300);
 }
 
 function renderChartQuickStats(ms, cs) {
@@ -6122,319 +6077,380 @@ function renderChartQuickStats(ms, cs) {
   const ratio = cs.imp ? Math.round((cs.del / cs.imp) * 100) : 0;
 
   const card = (label, value, color, change, icon) => `
-          <div class="card" style="text-align: center; padding: 16px 12px; border-left: 4px solid ${color}; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); transition: all 0.2s ease;">
-            <div style="font-size: 20px; margin-bottom: 4px;">${icon}</div>
-            <div class="c-lbl" style="font-size: 10px; text-transform: uppercase; color: #6b7280; font-weight: 600;">${label}</div>
-            <div class="c-val" style="font-size: 22px; color: ${color}; font-weight: 700;">${fmt(value)}</div>
-            <div class="c-sub" style="font-size: 10px; color: #9ca3af;">${change}</div>
-          </div>
-        `;
+    <div class="card" style="text-align:center;padding:14px 10px;border-left:4px solid ${color};background:#fff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.06)">
+      <div style="font-size:18px;margin-bottom:2px">${icon}</div>
+      <div class="c-lbl" style="font-size:9px;text-transform:uppercase;color:#6b7280;font-weight:600">${label}</div>
+      <div class="c-val" style="font-size:20px;color:${color};font-weight:700">${typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div class="c-sub" style="font-size:9px;color:#9ca3af">${change}</div>
+    </div>`;
 
   let h = "";
-  h += card(
-    "Total Balance",
-    cs.bal,
-    "#166534",
-    ps ? pBadge(cs.bal, ps.bal) : "—",
-    "💰",
-  );
-  h += card(
-    "Delivery",
-    cs.del,
-    "#1d4ed8",
-    ps ? pBadge(cs.del, ps.del, false) : "—",
-    "📤",
-  );
-  h += card(
-    "Receive",
-    cs.imp,
-    "#92400e",
-    ps ? pBadge(cs.imp, ps.imp, true) : "—",
-    "📥",
-  );
-  h += card(
-    "D/R Ratio",
-    ratio + "%",
-    ratio <= 75 ? "#16a34a" : "#dc2626",
-    ratio <= 75 ? "✅ Good" : "⚠️ High",
-    "📊",
-  );
-  h += card(
-    "Net Change",
-    cs.imp - cs.del >= 0 ? "#16a34a" : "#dc2626",
-    cs.imp - cs.del >= 0 ? "+" : "",
-    cs.imp - cs.del >= 0 ? "📈 Positive" : "📉 Negative",
-    cs.imp - cs.del >= 0 ? "↗️" : "↘️",
-  );
+  h += card("Balance", cs.bal, "#166534", ps ? pBadge(cs.bal, ps.bal) : "—", "💰");
+  h += card("Delivery", cs.del, "#1d4ed8", ps ? pBadge(cs.del, ps.del, false) : "—", "📤");
+  h += card("Receive", cs.imp, "#92400e", ps ? pBadge(cs.imp, ps.imp, true) : "—", "📥");
+  h += card("D/R Ratio", ratio + "%", ratio <= 75 ? "#16a34a" : "#dc2626", ratio <= 75 ? "✅ Good" : "⚠️ High", "📊");
+  h += card("Net Change", cs.imp - cs.del >= 0 ? "+" + (cs.imp - cs.del) : cs.imp - cs.del, cs.imp - cs.del >= 0 ? "#16a34a" : "#dc2626", cs.imp - cs.del >= 0 ? "↗ Positive" : "↘ Negative", cs.imp - cs.del >= 0 ? "📈" : "📉");
+  h += card("Work Days", DB[cur] ? DB[cur].filter((r) => !isRed(r.date)).length : 0, "#6366f1", ms.length + " months", "📅");
 
   document.getElementById("chart-quick-stats").innerHTML = h;
-
-  // Update advanced metrics after rendering
-  setTimeout(() => {
-    updateLiveMetrics();
-    updateAdvancedMetrics();
-  }, 100);
 }
 
-function renderLocationPerformance() {
+function renderLocSummaryTable() {
   const rows = DB[cur] || [];
   if (!rows.length) {
-    document.getElementById("location-performance").innerHTML =
-      "<div style='color:#888;text-align:center;padding:20px;'>No data available</div>";
+    document.getElementById("loc-summary-table").innerHTML =
+      "<div style='color:#94a3b8;text-align:center;padding:30px 10px;font-size:13px'>No data for this month</div>";
     return;
   }
 
-  let h = `<table style="width:100%;font-size:12px;border-collapse:collapse;">
-          <thead style="background:#1a3a5c;color:#fff;">
-            <tr>
-              <th style="padding:8px;text-align:left;">Location</th>
-              <th style="padding:8px;text-align:right;">Del</th>
-              <th style="padding:8px;text-align:right;">Rec</th>
-              <th style="padding:8px;text-align:right;">D/R</th>
-              <th style="padding:8px;text-align:right;">Status</th>
-            </tr>
-          </thead>
-          <tbody>`;
+  let h = `<table style="width:100%;font-size:11px;border-collapse:collapse">
+    <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+      <th style="padding:6px 8px;text-align:left;color:#64748b;font-weight:600;font-size:10px">Location</th>
+      <th style="padding:6px 6px;text-align:right;color:#64748b;font-weight:600;font-size:10px">Balance</th>
+      <th style="padding:6px 6px;text-align:right;color:#64748b;font-weight:600;font-size:10px">Del</th>
+      <th style="padding:6px 6px;text-align:right;color:#64748b;font-weight:600;font-size:10px">Rec</th>
+      <th style="padding:6px 6px;text-align:right;color:#64748b;font-weight:600;font-size:10px">D/R</th>
+    </tr></thead><tbody>`;
 
   LOCS.forEach((loc, li) => {
+    const cfg = LOC_CFG[loc];
     const del = rows.reduce((s, r) => s + r.del[li], 0);
     const imp = rows.reduce((s, r) => s + r.imp[li], 0);
+    const last = rows.slice(-1)[0];
+    const bal = last ? last.bal[li] : 0;
     const ratio = imp ? Math.round((del / imp) * 100) : 0;
-    const status =
-      ratio <= 75 ? "🟢 Good" : ratio <= 100 ? "🟡 Watch" : "🔴 Critical";
-    const color =
-      ratio <= 75 ? "#16a34a" : ratio <= 100 ? "#d97706" : "#dc2626";
+    const color = ratio <= 75 ? "#16a34a" : ratio <= 100 ? "#d97706" : "#dc2626";
 
-    h += `<tr style="border-bottom:1px solid #e5e7eb;background:${li % 2 == 0 ? "#fff" : "#f9fafb"};">
-            <td style="padding:8px;font-weight:700;color:#1a3a5c;">${loc}</td>
-            <td style="padding:8px;text-align:right;font-weight:600;color:#1d4ed8;">${fmt(del)}</td>
-            <td style="padding:8px;text-align:right;font-weight:600;color:#92400e;">${fmt(imp)}</td>
-            <td style="padding:8px;text-align:right;font-weight:700;color:${color};">${ratio}%</td>
-            <td style="padding:8px;text-align:right;font-weight:600;color:${color};">${status}</td>
-          </tr>`;
+    h += `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:5px 8px;font-weight:600;color:${cfg.bg};font-size:10px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${cfg.bg};margin-right:5px"></span>${loc}</td>
+      <td style="padding:5px 6px;text-align:right;font-weight:700;color:#1f2937;font-size:10px">${bal.toLocaleString()}</td>
+      <td style="padding:5px 6px;text-align:right;font-weight:500;color:#3b82f6;font-size:10px">${del.toLocaleString()}</td>
+      <td style="padding:5px 6px;text-align:right;font-weight:500;color:#d97706;font-size:10px">${imp.toLocaleString()}</td>
+      <td style="padding:5px 6px;text-align:right;font-weight:700;color:${color};font-size:10px">${ratio}%</td>
+    </tr>`;
   });
 
   h += "</tbody></table>";
-  document.getElementById("location-performance").innerHTML = h;
+  document.getElementById("loc-summary-table").innerHTML = h;
 }
 
 // ════════════════════════════════════════════════════
 //  REPORT
 // ════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
+//  REPORT FILTER HELPERS
+// ════════════════════════════════════════════════════
+
+function getFilteredMonths() {
+  const all = months();
+  if (!all.length) return [];
+  const from = reportFilter.from || all[0];
+  const to = reportFilter.to || all[all.length - 1];
+  const filtered = all.filter((k) => k >= from && k <= to);
+  return filtered.length ? filtered : [all[all.length - 1]];
+}
+
+function getCompareKey() {
+  if (reportFilter.compare === "none" || !rptMs.length) return null;
+  if (reportFilter.compare === "prev-year") {
+    const [y, m] = rptFocus.split("-").map(Number);
+    const k = mk(y - 1, m);
+    return DB[k] && DB[k].length ? k : null;
+  }
+  // prev-period: the month immediately before the selected range
+  const all = months();
+  const fromIdx = all.indexOf(rptMs[0]);
+  return fromIdx > 0 ? all[fromIdx - 1] : null;
+}
+
+function getCompareSumm() {
+  const k = getCompareKey();
+  return k ? summ(k) : null;
+}
+
+function buildFilterMonthOptions() {
+  const all = months();
+  if (!all.length) return;
+  const fromSel = document.getElementById("rpt-from-sel");
+  const toSel = document.getElementById("rpt-to-sel");
+  if (!fromSel || !toSel) return;
+  const opts = all
+    .slice()
+    .reverse()
+    .map((k) => {
+      const [y, m] = k.split("-").map(Number);
+      return `<option value="${k}" ${k === (reportFilter.from || all[all.length - 1]) ? "selected" : ""}>${MO[m - 1]} ${y}</option>`;
+    })
+    .join("");
+  const optsTo = all
+    .slice()
+    .reverse()
+    .map((k) => {
+      const [y, m] = k.split("-").map(Number);
+      return `<option value="${k}" ${k === (reportFilter.to || all[all.length - 1]) ? "selected" : ""}>${MO[m - 1]} ${y}</option>`;
+    })
+    .join("");
+  fromSel.innerHTML = opts;
+  toSel.innerHTML = optsTo;
+}
+
+function updateFilterPresetButtons() {
+  document.querySelectorAll(".rpt-preset").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.preset === reportFilter.preset);
+  });
+  const radios = document.querySelectorAll('input[name="rpt-cmp"]');
+  radios.forEach((r) => { if (r.value === reportFilter.compare) r.checked = true; });
+}
+
+function updateFilterStatus() {
+  const el = document.getElementById("rpt-filter-status");
+  const badge = document.getElementById("rpt-filter-badge");
+  if (!el || !rptMs.length) return;
+
+  const [fy, fm] = rptMs[0].split("-").map(Number);
+  const [ty, tm] = rptFocus.split("-").map(Number);
+  const cnt = rptMs.length;
+  const cs = summ(rptFocus);
+  const eff = cs.imp > 0 ? Math.round((cs.del / cs.imp) * 100) : 0;
+  const labels = {
+    "this-month": "This Month", "last-month": "Last Month", "3m": "3 Months",
+    "6m": "6 Months", "ytd": "Year to Date", "12m": "12 Months",
+    "all": "All Time", "custom": "Custom Range",
+  };
+  if (badge) badge.textContent = labels[reportFilter.preset] || "Custom";
+}
+
+function applyReportPreset(preset) {
+  const all = months();
+  if (!all.length) return;
+  const latest = all[all.length - 1];
+  const [ly, lm] = latest.split("-").map(Number);
+  reportFilter.preset = preset;
+
+  switch (preset) {
+    case "this-month":
+      reportFilter.from = reportFilter.to = latest;
+      break;
+    case "last-month": {
+      const d = new Date(ly, lm - 2, 1);
+      const k = mk(d.getFullYear(), d.getMonth() + 1);
+      reportFilter.from = reportFilter.to = all.includes(k) ? k : latest;
+      break;
+    }
+    case "3m": {
+      const d = new Date(ly, lm - 3, 1);
+      reportFilter.from = mk(d.getFullYear(), d.getMonth() + 1);
+      reportFilter.to = latest;
+      break;
+    }
+    case "6m": {
+      const d = new Date(ly, lm - 6, 1);
+      reportFilter.from = mk(d.getFullYear(), d.getMonth() + 1);
+      reportFilter.to = latest;
+      break;
+    }
+    case "ytd":
+      reportFilter.from = mk(ly, 1);
+      reportFilter.to = latest;
+      break;
+    case "12m": {
+      const d = new Date(ly, lm - 12, 1);
+      reportFilter.from = mk(d.getFullYear(), d.getMonth() + 1);
+      reportFilter.to = latest;
+      break;
+    }
+    case "all":
+      reportFilter.from = all[0];
+      reportFilter.to = latest;
+      break;
+  }
+  renderReport();
+}
+
+function applyReportCustomRange() {
+  const from = document.getElementById("rpt-from-sel")?.value;
+  const to = document.getElementById("rpt-to-sel")?.value;
+  if (!from || !to) return;
+  reportFilter.from = from <= to ? from : to;
+  reportFilter.to = from <= to ? to : from;
+  reportFilter.preset = "custom";
+  renderReport();
+}
+
+function onCustomRangeChange() {
+  applyReportCustomRange();
+}
+
 function renderReport() {
   showLoading("Generating reports...");
 
   setTimeout(() => {
-    const ms = months();
+    try {
+    const allMs = months();
 
-    // Update report header dates
-    const now = new Date();
-    const currentMonth = ms.length > 0 ? ms[ms.length - 1] : null;
-    if (currentMonth) {
-      const [y, m] = currentMonth.split("-");
-      document.getElementById("report-period-display").textContent =
-        MO[parseInt(m) - 1] + " " + y;
+    // Init filter on first render
+    if (!reportFilter.from && allMs.length) {
+      reportFilter.from = reportFilter.to = allMs[allMs.length - 1];
     }
-    document.getElementById("report-generated").textContent =
-      now.toLocaleDateString();
 
-    // Summary Section
-    const cs = summ(cur);
-    const ps = ms.length > 1 ? summ(ms.slice(-2)[0]) : null;
-    const ratio = cs.imp ? Math.round((cs.del / cs.imp) * 100) : 0;
-    const prevRatio = ps && ps.imp ? Math.round((ps.del / ps.imp) * 100) : 0;
-    const net = cs.imp - cs.del;
-    const prevNet = ps ? ps.imp - ps.del : 0;
+    buildFilterMonthOptions();
+    updateFilterPresetButtons();
 
-    const compVal = (curVal, prevVal) => {
-      if (prevVal === 0 || prevVal === null || prevVal === undefined)
-        return { diff: "First month", dir: "" };
-      const diff = curVal - prevVal;
-      const pct = Math.round((diff / prevVal) * 100);
-      const dir = diff > 0 ? "↑" : diff < 0 ? "↓" : "→";
-      return { diff: `${dir} ${Math.abs(pct)}%`, dir, val: prevVal };
-    };
+    rptMs = getFilteredMonths();
+    if (!rptMs.length && allMs.length) rptMs = [allMs[allMs.length - 1]];
+    rptFocus = rptMs[rptMs.length - 1] || cur;
 
-    const delComp = compVal(cs.del, ps ? ps.del : null);
-    const impComp = compVal(cs.imp, ps ? ps.imp : null);
+    const ms = rptMs;
+    const compareKey = getCompareKey();
+    const cs = summ(rptFocus);
+    const ps = compareKey ? summ(compareKey) : null;
 
-    // Monthly Trend Table
-    const prevMonthName =
-      ms.length > 1
-        ? MO[ms.slice(-2)[0].split("-")[1] - 1] +
-          " " +
-          ms.slice(-2)[0].split("-")[0]
-        : "";
-    const currMonthName =
-      MO[new Date().getMonth()] + " " + new Date().getFullYear();
+    // Header: show selected range
+    const now = new Date();
+    const [fy, fm] = rptMs[0].split("-").map(Number);
+    const [ty, tm] = rptFocus.split("-").map(Number);
+    const periodEl = document.getElementById("report-period-display");
+    if (periodEl) periodEl.textContent =
+      ms.length === 1
+        ? `${MO[tm - 1]} ${ty}`
+        : `${MO[fm - 1]} ${fy} — ${MO[tm - 1]} ${ty}`;
+    const genEl = document.getElementById("report-generated");
+    if (genEl) genEl.textContent = now.toLocaleDateString();
 
-    let locH = `<div class="simple-table-container">
-            <table class="simple-table">
-              <thead>
-                <tr>
-                  <th style="text-align:left;">📍 Location</th>
-                  <th>${currMonthName}<br>Receive</th>
-                  <th>${prevMonthName || "Prev"}<br>Receive</th>
-                  <th>Receive<br>Change</th>
-                  <th>${currMonthName}<br>Delivery</th>
-                  <th>${prevMonthName || "Prev"}<br>Delivery</th>
-                  <th>Delivery<br>Change</th>
-                </tr>
-              </thead>
-              <tbody>`;
+    // Column labels for comparison tables
+    const currLbl = `${MO[tm - 1]} ${ty}`;
+    const prevLbl = compareKey
+      ? (() => { const [py, pm] = compareKey.split("-").map(Number); return `${MO[pm - 1]} ${py}`; })()
+      : "Compare";
+
+    // --- Location vs Compare Period (locH) ---
+    let locH = `<div class="simple-table-container"><table class="simple-table">
+              <thead><tr>
+                <th style="text-align:left">📍 Location</th>
+                <th>${currLbl}<br>Receive</th><th>${prevLbl}<br>Receive</th><th>Recv Change</th>
+                <th>${currLbl}<br>Delivery</th><th>${prevLbl}<br>Delivery</th><th>Del Change</th>
+              </tr></thead><tbody>`;
 
     LOCS.forEach((loc, i) => {
-      const curImp = (DB[cur] || []).reduce(
-        (sum, row) => sum + (row.imp[i] || 0),
-        0,
-      );
-      const prevImp = ps
-        ? (DB[ms.slice(-2)[0]] || []).reduce(
-            (sum, row) => sum + (row.imp[i] || 0),
-            0,
-          )
-        : 0;
-      const curDel = (DB[cur] || []).reduce(
-        (sum, row) => sum + (row.del[i] || 0),
-        0,
-      );
-      const prevDel = ps
-        ? (DB[ms.slice(-2)[0]] || []).reduce(
-            (sum, row) => sum + (row.del[i] || 0),
-            0,
-          )
-        : 0;
-
-      const impDiff = curImp - prevImp;
-      const delDiff = curDel - prevDel;
-      const impPct =
-        prevImp > 0
-          ? Math.round((impDiff / prevImp) * 100)
-          : curImp > 0
-            ? 100
-            : 0;
-      const delPct =
-        prevDel > 0
-          ? Math.round((delDiff / prevDel) * 100)
-          : curDel > 0
-            ? 100
-            : 0;
-
+      let cI = 0, cD = 0;
+      rptMs.forEach((k) => {
+        (DB[k] || []).forEach((r) => {
+          cI += r.imp[i] || 0;
+          cD += r.del[i] || 0;
+        });
+      });
+      const pI = compareKey ? (DB[compareKey] || []).reduce((s, r) => s + (r.imp[i] || 0), 0) : 0;
+      const pD = compareKey ? (DB[compareKey] || []).reduce((s, r) => s + (r.del[i] || 0), 0) : 0;
+      const iDiff = cI - pI, dDiff = cD - pD;
+      const iPct = pI > 0 ? Math.round((iDiff / pI) * 100) : cI > 0 ? 100 : 0;
+      const dPct = pD > 0 ? Math.round((dDiff / pD) * 100) : cD > 0 ? 100 : 0;
       locH += `<tr>
-              <td class="month" style="text-align:left;font-weight:700;">${loc}</td>
-              <td style="color:#92400e;font-weight:700;font-size:13px;">${fmt(curImp)}</td>
-              <td style="color:#64748b;font-size:12px;">${ps ? fmt(prevImp) : "—"}</td>
-              <td style="font-weight:700;"><span style="color:${impDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px;">${impDiff >= 0 ? "+" : ""}${fmt(impDiff)}</span><br><span style="color:${impPct >= 0 ? "#16a34a" : "#dc2626"};font-size:10px;">(${impPct >= 0 ? "↑" : "↓"}${Math.abs(impPct)}%)</span></td>
-              <td style="color:#1d4ed8;font-weight:700;font-size:13px;">${fmt(curDel)}</td>
-              <td style="color:#64748b;font-size:12px;">${ps ? fmt(prevDel) : "—"}</td>
-              <td style="font-weight:700;"><span style="color:${delDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px;">${delDiff >= 0 ? "+" : ""}${fmt(delDiff)}</span><br><span style="color:${delPct >= 0 ? "#16a34a" : "#dc2626"};font-size:10px;">(${delPct >= 0 ? "↑" : "↓"}${Math.abs(delPct)}%)</span></td>
-            </tr>`;
+        <td class="month" style="text-align:left;font-weight:700">${loc}</td>
+        <td style="color:#92400e;font-weight:700;font-size:13px">${fmt(cI)}</td>
+        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pI) : "—"}</td>
+        <td style="font-weight:700"><span style="color:${iDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${iDiff >= 0 ? "+" : ""}${fmt(iDiff)}</span><br><span style="font-size:10px;color:${iPct >= 0 ? "#16a34a" : "#dc2626"}">(${iPct >= 0 ? "↑" : "↓"}${Math.abs(iPct)}%)</span></td>
+        <td style="color:#1d4ed8;font-weight:700;font-size:13px">${fmt(cD)}</td>
+        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pD) : "—"}</td>
+        <td style="font-weight:700"><span style="color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${dDiff >= 0 ? "+" : ""}${fmt(dDiff)}</span><br><span style="font-size:10px;color:${dPct >= 0 ? "#16a34a" : "#dc2626"}">(${dPct >= 0 ? "↑" : "↓"}${Math.abs(dPct)}%)</span></td>
+      </tr>`;
     });
 
-    // Total row
-    const totCurImp = (DB[cur] || []).reduce(
-      (sum, row) => sum + row.imp.reduce((a, b) => a + b, 0),
-      0,
-    );
-    const totPrevImp = ps
-      ? (DB[ms.slice(-2)[0]] || []).reduce(
-          (sum, row) => sum + row.imp.reduce((a, b) => a + b, 0),
-          0,
-        )
-      : 0;
-    const totCurDel = (DB[cur] || []).reduce(
-      (sum, row) => sum + row.del.reduce((a, b) => a + b, 0),
-      0,
-    );
-    const totPrevDel = ps
-      ? (DB[ms.slice(-2)[0]] || []).reduce(
-          (sum, row) => sum + row.del.reduce((a, b) => a + b, 0),
-          0,
-        )
-      : 0;
-
-    const totImpDiff = totCurImp - totPrevImp;
-    const totDelDiff = totCurDel - totPrevDel;
-    const totImpPct =
-      totPrevImp > 0 ? Math.round((totImpDiff / totPrevImp) * 100) : 0;
-    const totDelPct =
-      totPrevDel > 0 ? Math.round((totDelDiff / totPrevDel) * 100) : 0;
-
-    locH += `<tr style="background:#f1f5f9;font-weight:700;">
-            <td class="month" style="text-align:left;">📊 TOTAL</td>
-            <td style="color:#92400e;font-size:14px;">${fmt(totCurImp)}</td>
-            <td style="color:#64748b;">${ps ? fmt(totPrevImp) : "—"}</td>
-            <td style="color:${totImpDiff >= 0 ? "#16a34a" : "#dc2626"};">${totImpDiff >= 0 ? "+" : ""}${fmt(totImpDiff)} (${totImpPct >= 0 ? "↑" : "↓"}${Math.abs(totImpPct)}%)</td>
-            <td style="color:#1d4ed8;font-size:14px;">${fmt(totCurDel)}</td>
-            <td style="color:#64748b;">${ps ? fmt(totPrevDel) : "—"}</td>
-            <td style="color:${totDelDiff >= 0 ? "#16a34a" : "#dc2626"};">${totDelDiff >= 0 ? "+" : ""}${fmt(totDelDiff)} (${totDelPct >= 0 ? "↑" : "↓"}${Math.abs(totDelPct)}%)</td>
-          </tr>`;
-
-    locH += `</tbody></table></div>`;
-
-    // Monthly Table
-    let monthlyH = `<div class="simple-table-container">
-            <table class="simple-table">
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th>Receive</th>
-                  <th>Delivery</th>
-                  <th>Balance</th>
-                  <th>Efficiency</th>
-                </tr>
-              </thead>
-              <tbody>`;
-    ms.slice()
-      .reverse()
-      .forEach((k) => {
-        const s = summ(k);
-        const [y, m] = k.split("-").map(Number);
-        const efficiency = s.imp ? Math.round((s.del / s.imp) * 100) : 0;
-        const effClass =
-          efficiency >= 100 ? "excellent" : efficiency >= 75 ? "good" : "poor";
-        monthlyH += `<tr class="${k === cur ? "current" : ""}">
-              <td class="month">${MO[m - 1]} ${y}</td>
-              <td class="receive">${fmt(s.imp)}</td>
-              <td class="delivery">${fmt(s.del)}</td>
-              <td class="balance">${fmt(s.bal)}</td>
-              <td><span class="efficiency ${effClass}">${efficiency}%</span></td>
-            </tr>`;
+    let tCI = 0, tCD = 0;
+    rptMs.forEach((k) => {
+      (DB[k] || []).forEach((r) => {
+        tCI += r.imp.reduce((a, b) => a + b, 0);
+        tCD += r.del.reduce((a, b) => a + b, 0);
       });
-    monthlyH += `</tbody></table></div>`;
+    });
+    const tPI = compareKey ? (DB[compareKey] || []).reduce((s, r) => s + r.imp.reduce((a, b) => a + b, 0), 0) : 0;
+    const tPD = compareKey ? (DB[compareKey] || []).reduce((s, r) => s + r.del.reduce((a, b) => a + b, 0), 0) : 0;
+    const tiD = tCI - tPI, tdD = tCD - tPD;
+    const tiPct = tPI > 0 ? Math.round((tiD / tPI) * 100) : 0;
+    const tdPct = tPD > 0 ? Math.round((tdD / tPD) * 100) : 0;
+    locH += `<tr style="background:#f1f5f9;font-weight:700">
+      <td class="month" style="text-align:left">📊 TOTAL</td>
+      <td style="color:#92400e;font-size:14px">${fmt(tCI)}</td>
+      <td style="color:#64748b">${compareKey ? fmt(tPI) : "—"}</td>
+      <td style="color:${tiD >= 0 ? "#16a34a" : "#dc2626"}">${tiD >= 0 ? "+" : ""}${fmt(tiD)} (${tiPct >= 0 ? "↑" : "↓"}${Math.abs(tiPct)}%)</td>
+      <td style="color:#1d4ed8;font-size:14px">${fmt(tCD)}</td>
+      <td style="color:#64748b">${compareKey ? fmt(tPD) : "—"}</td>
+      <td style="color:${tdD >= 0 ? "#16a34a" : "#dc2626"}">${tdD >= 0 ? "+" : ""}${fmt(tdD)} (${tdPct >= 0 ? "↑" : "↓"}${Math.abs(tdPct)}%)</td>
+    </tr>`;
+    locH += "</tbody></table></div>";
+
+    // --- Monthly Trend Table (filtered range) ---
+    let monthlyH = `<div class="simple-table-container"><table class="simple-table">
+      <thead><tr><th>Month</th><th>Receive</th><th>Delivery</th><th>Balance</th><th>Efficiency</th></tr></thead>
+      <tbody>`;
+    ms.slice().reverse().forEach((k) => {
+      const s = summ(k);
+      const [y, m] = k.split("-").map(Number);
+      const eff = s.imp ? Math.round((s.del / s.imp) * 100) : 0;
+      const effCls = eff >= 100 ? "excellent" : eff >= 75 ? "good" : "poor";
+      monthlyH += `<tr class="${k === rptFocus ? "current" : ""}">
+        <td class="month">${MO[m - 1]} ${y}</td>
+        <td class="receive">${fmt(s.imp)}</td>
+        <td class="delivery">${fmt(s.del)}</td>
+        <td class="balance">${fmt(s.bal)}</td>
+        <td><span class="efficiency ${effCls}">${eff}%</span></td>
+      </tr>`;
+    });
+    monthlyH += "</tbody></table></div>";
     document.getElementById("rpt-monthly").innerHTML = monthlyH;
 
-    // Location Summary
+    // --- Location Performance Cards (range aggregate) ---
     let locationH = `<div class="location-grid">`;
     LOCS.forEach((loc, li) => {
-      const s = summ(cur);
-      const locDel = s.dl[li];
-      const locImp = s.il[li];
+      let locDel = 0, locImp = 0;
+      rptMs.forEach((k) => {
+        (DB[k] || []).forEach((r) => {
+          locDel += r.del[li] || 0;
+          locImp += r.imp[li] || 0;
+        });
+      });
       const locRatio = locImp ? Math.round((locDel / locImp) * 100) : 0;
       const cfg = LOC_CFG[loc];
       locationH += `<div class="location-card">
-              <div class="location-header" style="background:${cfg.bg}">${loc}</div>
-              <div class="location-metrics">
-                <div class="metric">
-                  <span class="metric-label">Delivery</span>
-                  <span class="metric-value" style="color:#1d4ed8;">${fmt(locDel)}</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">Receive</span>
-                  <span class="metric-value" style="color:#92400e;">${fmt(locImp)}</span>
-                </div>
-                <div class="metric">
-                  <span class="metric-label">D/R Ratio</span>
-                  <span class="metric-value ${locRatio <= 75 ? "excellent" : "poor"}">${locRatio}%</span>
-                </div>
-              </div>
-            </div>`;
+        <div class="location-header" style="background:${cfg.bg}">${loc}</div>
+        <div class="location-metrics">
+          <div class="metric"><span class="metric-label">Delivery</span><span class="metric-value" style="color:#1d4ed8">${fmt(locDel)}</span></div>
+          <div class="metric"><span class="metric-label">Receive</span><span class="metric-value" style="color:#92400e">${fmt(locImp)}</span></div>
+          <div class="metric"><span class="metric-label">D/R Ratio</span><span class="metric-value ${locRatio <= 75 ? "excellent" : "poor"}">${locRatio}%</span></div>
+        </div>
+      </div>`;
     });
-    locationH += `</div>`;
+    locationH += "</div>";
     document.getElementById("rpt-location").innerHTML = locationH;
+    document.getElementById("rpt-loccompare").innerHTML = locH;
 
+    rptExecutive();
+    document.getElementById("rpt-daily-log").innerHTML = rptDailyLog();
+    document.getElementById("rpt-group").innerHTML = rptGroup();
+    document.getElementById("rpt-ranking").innerHTML = rptRanking();
+    document.getElementById("rpt-peak").innerHTML = rptPeak();
+    document.getElementById("rpt-flow").innerHTML = rptFlow();
+    document.getElementById("rpt-dow").innerHTML = rptDow();
+    document.getElementById("rpt-transfers").innerHTML = rptTransfers();
+    document.getElementById("rpt-yoy").innerHTML = rptYoY();
+    document.getElementById("rpt-auction").innerHTML = renderAuctionReport();
+    syncAuctionFilterUI();
+
+    updateFilterStatus();
     hideLoading();
+    } catch (e) {
+      console.error("renderReport error:", e);
+      hideLoading();
+      showErrorOverlay("Report generation failed: " + e.message);
+    }
   }, 300);
+}
+
+function toggleRptSection(id) {
+  const sec = document.getElementById(id);
+  if (!sec) return;
+  const wasCollapsed = sec.classList.toggle("collapsed");
+  const arrow = sec.querySelector(".rpt-sec-arrow");
+  if (arrow) arrow.textContent = wasCollapsed ? "▾" : "▴";
 }
 
 function generateSimpleSummaryCards(months) {
@@ -6703,11 +6719,885 @@ function generateEfficiencyMetrics(months) {
               `;
 }
 
-function exportReport(type) {
-  if (!type) {
-    showSuccess("Report export feature coming soon!");
+// ════════════════════════════════════════════════════
+//  REPORT SECTION RENDERERS  (all use rptMs / rptFocus)
+// ════════════════════════════════════════════════════
+
+function rptExecutive() {
+  const allRows = [];
+  rptMs.forEach((k) => { (DB[k] || []).forEach((r) => allRows.push(r)); });
+  const workDays = allRows.filter((r) => !isRed(r.date)).length;
+  const holDays = allRows.filter((r) => isRed(r.date)).length;
+  let totDel = 0, totImp = 0, totBal = 0, totAuc = 0;
+  rptMs.forEach((k) => {
+    const s = summ(k);
+    totDel += s.del;
+    totImp += s.imp;
+    totBal = s.bal;
+  });
+  allRows.forEach((r) => { totAuc += parseInt(r.av) || 0; });
+  const aucShare = (totDel + totAuc) > 0 ? Math.round(totAuc / (totDel + totAuc) * 100) : 0;
+  const aucDays = allRows.filter((r) => (parseInt(r.av) || 0) > 0).length;
+
+  const avgDelWD = workDays > 0 ? Math.round(totDel / workDays) : 0;
+  const avgRecWD = workDays > 0 ? Math.round(totImp / workDays) : 0;
+  const net = totImp - totDel;
+  const eff = totImp > 0 ? Math.round((totDel / totImp) * 100) : 0;
+  const effColor = eff >= 100 ? "#16a34a" : eff >= 75 ? "#d97706" : "#dc2626";
+  const ps = getCompareSumm();
+
+  const kpi = (icon, val, lbl, color, sub) =>
+    `<div class="rpt-kpi-card" style="border-top:3px solid ${color}">
+      <div class="rpt-kpi-icon">${icon}</div>
+      <div class="rpt-kpi-val" style="color:${color}">${val}</div>
+      <div class="rpt-kpi-lbl">${lbl}</div>
+      ${sub ? `<div class="rpt-kpi-sub">${sub}</div>` : ""}
+    </div>`;
+
+  document.getElementById("rpt-executive").innerHTML = `
+    <div class="rpt-kpi-grid">
+      ${kpi("📥", fmt(totImp), "Total Receive", "#dc2626", ps ? "Compare: " + fmt(ps.imp) : "")}
+      ${kpi("📤", fmt(totDel), "Total Delivery", "#2563eb", ps ? "Compare: " + fmt(ps.del) : "")}
+      ${kpi("🚗", fmt(totAuc), "Auction Deliveries", "#ea580c", aucShare + "% of total · " + aucDays + " active days")}
+      ${kpi("📦", fmt(totBal), "Closing Balance", "#059669", "End-of-period stock")}
+      ${kpi("⚡", eff + "%", "Delivery Efficiency", effColor, "Delivery ÷ Receive")}
+      ${kpi(net >= 0 ? "📈" : "📉", (net >= 0 ? "+" : "") + fmt(net), "Net Stock Change", net >= 0 ? "#16a34a" : "#dc2626", "Receive − Delivery")}
+      ${kpi("📅", workDays, "Working Days", "#0891b2", holDays + " holiday / off days")}
+      ${kpi("🚛", fmt(avgDelWD), "Avg Delivery / Day", "#d97706", "Per working day")}
+      ${kpi("📦", fmt(avgRecWD), "Avg Receive / Day", "#7c3aed", "Per working day")}
+    </div>`;
+}
+
+function rptDailyLog() {
+  const allRows = [];
+  rptMs.forEach((k) => { (DB[k] || []).forEach((r) => allRows.push(r)); });
+  if (!allRows.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No data for the selected range.</p>';
+
+  let totalDel = 0, totalRec = 0;
+  let html = `<div class="simple-table-container"><table class="simple-table" style="min-width:900px;font-size:11px">
+    <thead><tr>
+      <th>Date</th><th>Day</th>
+      ${LOCS.map((l) =>
+        `<th>${l.replace("Warehouse-", "WH-").replace("Yard No-", "Yd").replace("Shed No-", "Sh")}<br><span style="font-weight:400;font-size:9px">Del/Rec</span></th>`
+      ).join("")}
+      <th>Total Del</th><th>Total Rec</th><th>Closing Bal</th><th>Note</th>
+    </tr></thead><tbody>`;
+
+  allRows.forEach((r) => {
+    const red = isRed(r.date);
+    const tDel = r.del.reduce((a, b) => a + b, 0);
+    const tRec = r.imp.reduce((a, b) => a + b, 0);
+    const closing = getClosing(r);
+    totalDel += tDel;
+    totalRec += tRec;
+    const bg = red ? "background:#fef2f2;" : r.date === TODAY ? "background:#fef9c3;" : "";
+    html += `<tr style="${bg}">
+      <td style="font-weight:700;white-space:nowrap;color:${red ? "#991b1b" : "#1f2937"}">${r.date}</td>
+      <td style="color:${red ? "#991b1b" : "#6b7280"}">${DAYS[dow(r.date)]}</td>
+      ${LOCS.map((_, i) =>
+        `<td><span style="color:#2563eb">${r.del[i] || 0}</span>/<span style="color:#dc2626">${r.imp[i] || 0}</span></td>`
+      ).join("")}
+      <td style="font-weight:700;color:#2563eb">${tDel || "—"}</td>
+      <td style="font-weight:700;color:#dc2626">${tRec || "—"}</td>
+      <td style="font-weight:700;color:#059669">${fmt(closing)}</td>
+      <td style="font-size:10px;color:#6b7280;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.al || ""}</td>
+    </tr>`;
+  });
+
+  html += `<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #d1d5db">
+    <td colspan="2" style="text-align:left;padding-left:10px">📊 TOTAL</td>
+    ${LOCS.map(() => "<td>—</td>").join("")}
+    <td style="color:#2563eb;font-size:13px">${fmt(totalDel)}</td>
+    <td style="color:#dc2626;font-size:13px">${fmt(totalRec)}</td>
+    <td colspan="2"></td>
+  </tr>`;
+  return html + "</tbody></table></div>";
+}
+
+function rptGroup() {
+  const allRows = [];
+  rptMs.forEach((k) => { (DB[k] || []).forEach((r) => allRows.push(r)); });
+  const compareKey = getCompareKey();
+  const prevRows = compareKey ? (DB[compareKey] || []) : [];
+
+  const groups = [
+    { lbl: "Warehouse", lis: [0, 1], bg: "#1e4d7b", icon: "🏢" },
+    { lbl: "Yard",      lis: [2, 3], bg: "#1a5c3a", icon: "🚜" },
+    { lbl: "Shed",      lis: [4, 5, 6, 7], bg: "#7c3c1a", icon: "🏭" },
+  ];
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">';
+
+  groups.forEach((g) => {
+    const totDel = allRows.reduce((s, r) => s + g.lis.reduce((a, i) => a + r.del[i], 0), 0);
+    const totRec = allRows.reduce((s, r) => s + g.lis.reduce((a, i) => a + r.imp[i], 0), 0);
+    const lastRow = rptMs.length ? (DB[rptMs[rptMs.length - 1]] || []).slice(-1)[0] : null;
+    const curBal = lastRow ? g.lis.reduce((a, i) => a + lastRow.bal[i], 0) : 0;
+    const eff = totRec > 0 ? Math.round((totDel / totRec) * 100) : 0;
+    const prevDel = prevRows.reduce((s, r) => s + g.lis.reduce((a, i) => a + r.del[i], 0), 0);
+    const prevRec = prevRows.reduce((s, r) => s + g.lis.reduce((a, i) => a + r.imp[i], 0), 0);
+    const dDiff = totDel - prevDel, rDiff = totRec - prevRec;
+    const effColor = eff >= 100 ? "#16a34a" : eff >= 75 ? "#d97706" : "#dc2626";
+
+    html += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div style="background:${g.bg};color:#fff;padding:14px 16px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">
+        ${g.icon} ${g.lbl}
+        <span style="margin-left:auto;font-size:11px;opacity:0.75">${g.lis.map((i) => LOCS[i]).join(" · ")}</span>
+      </div>
+      <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="text-align:center;padding:12px;background:#eff6ff;border-radius:8px;border:1px solid #dbeafe">
+          <div style="font-size:20px;font-weight:700;color:#2563eb">${fmt(totDel)}</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px">Delivery</div>
+          ${prevRows.length ? `<div style="font-size:10px;color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${dDiff >= 0 ? "↑" : "↓"}${fmt(Math.abs(dDiff))} vs prev</div>` : ""}
+        </div>
+        <div style="text-align:center;padding:12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+          <div style="font-size:20px;font-weight:700;color:#dc2626">${fmt(totRec)}</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px">Receive</div>
+          ${prevRows.length ? `<div style="font-size:10px;color:${rDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${rDiff >= 0 ? "↑" : "↓"}${fmt(Math.abs(rDiff))} vs prev</div>` : ""}
+        </div>
+        <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+          <div style="font-size:20px;font-weight:700;color:#059669">${fmt(curBal)}</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px">End Balance</div>
+        </div>
+        <div style="text-align:center;padding:12px;background:#f5f3ff;border-radius:8px;border:1px solid #ddd6fe">
+          <div style="font-size:20px;font-weight:700;color:${effColor}">${eff}%</div>
+          <div style="font-size:10px;color:#6b7280;margin-top:2px">Efficiency</div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  return html + "</div>";
+}
+
+function rptRanking() {
+  const lastRow = rptMs.length ? (DB[rptMs[rptMs.length - 1]] || []).slice(-1)[0] : null;
+
+  const ranked = LOCS.map((loc, i) => {
+    const totDel = rptMs.reduce((s, k) => s + (DB[k] || []).reduce((a, r) => a + r.del[i], 0), 0);
+    const totRec = rptMs.reduce((s, k) => s + (DB[k] || []).reduce((a, r) => a + r.imp[i], 0), 0);
+    const curBal = lastRow ? lastRow.bal[i] : 0;
+    const eff = totRec > 0 ? Math.round((totDel / totRec) * 100) : 0;
+    return { loc, i, totDel, totRec, curBal, eff };
+  }).sort((a, b) => b.eff - a.eff);
+
+  const medals = ["🥇", "🥈", "🥉", "4th", "5th", "6th", "7th", "8th"];
+
+  const rangeLbl = rptMs.length === 1
+    ? `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${rptMs[0].split("-")[0]}`
+    : `${rptMs.length} months`;
+
+  let html = `<div class="simple-table-container"><table class="simple-table">
+    <thead><tr>
+      <th>Rank</th>
+      <th style="text-align:left">Location</th>
+      <th>Delivery (${rangeLbl})</th>
+      <th>Receive (${rangeLbl})</th>
+      <th>Balance</th>
+      <th>Efficiency</th>
+      <th>Grade</th>
+    </tr></thead><tbody>`;
+
+  ranked.forEach((d, idx) => {
+    const effCls = d.eff >= 100 ? "excellent" : d.eff >= 75 ? "good" : "poor";
+    const grade = d.eff >= 100 ? "A+" : d.eff >= 90 ? "A" : d.eff >= 75 ? "B" : d.eff >= 60 ? "C" : "D";
+    const gradeColor = d.eff >= 90 ? "#16a34a" : d.eff >= 75 ? "#d97706" : "#dc2626";
+    html += `<tr>
+      <td style="font-size:${idx < 3 ? 18 : 13}px;font-weight:700">${medals[idx]}</td>
+      <td style="text-align:left;font-weight:700">
+        <span style="display:inline-block;width:10px;height:10px;background:${LOC_CFG[d.loc].bg};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${d.loc}
+      </td>
+      <td class="delivery">${fmt(d.totDel)}</td>
+      <td class="receive">${fmt(d.totRec)}</td>
+      <td class="balance">${fmt(d.curBal)}</td>
+      <td><span class="efficiency ${effCls}">${d.eff}%</span></td>
+      <td style="font-weight:700;font-size:14px;color:${gradeColor}">${grade}</td>
+    </tr>`;
+  });
+
+  return html + "</tbody></table></div>";
+}
+
+function rptPeak() {
+  const allRows = [];
+  rptMs.forEach((k) => { (DB[k] || []).forEach((r) => allRows.push(r)); });
+  if (!allRows.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No data for the selected range.</p>';
+
+  const enriched = allRows.map((r) => ({
+    date: r.date,
+    day: DAYS[dow(r.date)],
+    tDel: r.del.reduce((a, b) => a + b, 0),
+    tRec: r.imp.reduce((a, b) => a + b, 0),
+  }));
+
+  const topDel = [...enriched].sort((a, b) => b.tDel - a.tDel).slice(0, 5);
+  const topRec = [...enriched].sort((a, b) => b.tRec - a.tRec).slice(0, 5);
+
+  const half = (data, valKey, label, color) => `
+    <div style="flex:1;min-width:240px">
+      <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:10px">${label}</div>
+      <div class="simple-table-container"><table class="simple-table">
+        <thead><tr><th>#</th><th>Date</th><th>Day</th><th>Count</th></tr></thead>
+        <tbody>
+          ${data.map((r, i) => `<tr>
+            <td style="font-weight:700;color:${color}">#${i + 1}</td>
+            <td style="font-weight:700">${r.date}</td>
+            <td style="color:#6b7280">${r.day}</td>
+            <td style="font-weight:700;color:${color};font-size:14px">${fmt(r[valKey])}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table></div>
+    </div>`;
+
+  return `<div style="display:flex;gap:24px;flex-wrap:wrap">
+    ${half(topDel, "tDel", "🔝 Top 5 Delivery Days", "#2563eb")}
+    ${half(topRec, "tRec", "🔝 Top 5 Receive Days", "#dc2626")}
+  </div>`;
+}
+
+function rptFlow() {
+  if (!rptMs.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No data.</p>';
+
+  let html = `<div class="simple-table-container"><table class="simple-table">
+    <thead><tr>
+      <th>Month</th>
+      <th>Opening Balance</th>
+      <th>+ Receive</th>
+      <th>− Delivery</th>
+      <th>Closing Balance</th>
+      <th>Net Change</th>
+    </tr></thead><tbody>`;
+
+  rptMs.slice().reverse().forEach((k) => {
+    const rows = DB[k] || [];
+    if (!rows.length) return;
+    const [y, m] = k.split("-").map(Number);
+    const firstRow = rows[0];
+    const lastRow = rows[rows.length - 1];
+    const opening = firstRow.bal ? firstRow.bal.reduce((a, b) => a + b, 0) : 0;
+    const closing = getClosing(lastRow);
+    const s = summ(k);
+    const net = closing - opening;
+    html += `<tr class="${k === cur ? "current" : ""}">
+      <td class="month" ${k === rptFocus ? 'style="font-weight:900;color:#1d4ed8"' : ""}>${MO[m - 1]} ${y}${k === rptFocus ? " ★" : ""}</td>
+      <td style="font-weight:700">${fmt(opening)}</td>
+      <td style="color:#dc2626;font-weight:700">+${fmt(s.imp)}</td>
+      <td style="color:#2563eb;font-weight:700">−${fmt(s.del)}</td>
+      <td style="color:#059669;font-weight:700">${fmt(closing)}</td>
+      <td style="font-weight:700;color:${net >= 0 ? "#16a34a" : "#dc2626"}">${net >= 0 ? "+" : ""}${fmt(net)}</td>
+    </tr>`;
+  });
+
+  return html + "</tbody></table></div>";
+}
+
+function rptDow() {
+  const stats = Array.from({ length: 7 }, (_, d) => ({ d, lbl: DAYS[d], del: 0, rec: 0, cnt: 0 }));
+
+  rptMs.forEach((k) => {
+    (DB[k] || []).forEach((r) => {
+      const d = dow(r.date);
+      stats[d].del += r.del.reduce((a, b) => a + b, 0);
+      stats[d].rec += r.imp.reduce((a, b) => a + b, 0);
+      stats[d].cnt++;
+    });
+  });
+
+  const maxAvg = Math.max(...stats.map((s) => (s.cnt > 0 ? s.del / s.cnt : 0))) || 1;
+
+  let html = `<div class="simple-table-container"><table class="simple-table">
+    <thead><tr>
+      <th>Weekday</th><th>Avg Delivery</th><th>Avg Receive</th><th>Days Counted</th><th>Activity</th>
+    </tr></thead><tbody>`;
+
+  [1, 2, 3, 4, 5, 6, 0].forEach((d) => {
+    const s = stats[d];
+    const avgDel = s.cnt > 0 ? Math.round(s.del / s.cnt) : 0;
+    const avgRec = s.cnt > 0 ? Math.round(s.rec / s.cnt) : 0;
+    const bar = Math.round((avgDel / maxAvg) * 100);
+    const isOff = (d === 5 && sett.fri) || (d === 6 && sett.sat) || (d === 0 && sett.sun);
+    html += `<tr style="${isOff ? "background:#fef2f2" : ""}">
+      <td style="font-weight:700;color:${isOff ? "#991b1b" : "#1f2937"}">${s.lbl}${isOff ? " 🔴" : ""}</td>
+      <td style="color:#2563eb;font-weight:700">${fmt(avgDel)}</td>
+      <td style="color:#dc2626;font-weight:700">${fmt(avgRec)}</td>
+      <td style="color:#6b7280">${s.cnt}</td>
+      <td style="min-width:130px;padding:8px 10px">
+        <div style="background:#e5e7eb;border-radius:4px;height:10px;overflow:hidden">
+          <div style="background:#3b82f6;height:100%;width:${bar}%;border-radius:4px"></div>
+        </div>
+        <span style="font-size:9px;color:#9ca3af">${bar}%</span>
+      </td>
+    </tr>`;
+  });
+
+  return html + "</tbody></table></div>";
+}
+
+function rptTransfers() {
+  if (!sett.transfers || !Object.keys(sett.transfers).length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No transfers recorded.</p>';
+  if (!rptMs.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No data for the selected range.</p>';
+
+  const rangeTxs = Object.entries(sett.transfers)
+    .filter(([date]) => date >= rptMs[0] && date <= rptMs[rptMs.length - 1])
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  if (!rangeTxs.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No transfers recorded for the selected range.</p>';
+
+  let totalQty = 0;
+  let html = `<div class="simple-table-container"><table class="simple-table">
+    <thead><tr>
+      <th>Date</th><th>From</th><th>→</th><th>To</th><th>Qty</th><th>Note</th>
+    </tr></thead><tbody>`;
+
+  rangeTxs.forEach(([date, txs]) => {
+    (txs || []).forEach((t) => {
+      totalQty += t.qty || 0;
+      const fromLoc = (t.from != null && LOCS[t.from]) ? LOCS[t.from] : (t.from || "—");
+      const toLoc = (t.to != null && LOCS[t.to]) ? LOCS[t.to] : (t.to || "—");
+      html += `<tr>
+        <td style="font-weight:700">${date}</td>
+        <td style="color:#dc2626;font-weight:600">${fromLoc}</td>
+        <td style="color:#6b7280">→</td>
+        <td style="color:#16a34a;font-weight:600">${toLoc}</td>
+        <td style="font-weight:700;color:#7c3aed;font-size:14px">${fmt(t.qty || 0)}</td>
+        <td style="color:#6b7280;font-size:11px">${t.note || ""}</td>
+      </tr>`;
+    });
+  });
+
+  html += `<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #d1d5db">
+    <td colspan="4" style="text-align:left;padding-left:10px">TOTAL</td>
+    <td style="color:#7c3aed;font-size:14px">${fmt(totalQty)}</td><td></td>
+  </tr>`;
+  return html + "</tbody></table></div>";
+}
+
+function rptYoY() {
+  if (!rptMs.length)
+    return '<p style="color:#9ca3af;text-align:center;padding:20px">No data for the selected range.</p>';
+
+  const prevMs = rptMs.map((k) => {
+    const [y, m] = k.split("-").map(Number);
+    return mk(y - 1, m);
+  });
+
+  const availablePrev = prevMs.filter((k) => DB[k] && DB[k].length);
+  if (!availablePrev.length)
+    return `<p style="color:#9ca3af;text-align:center;padding:20px">No previous year data — year-over-year comparison unavailable.</p>`;
+
+  let totDel = 0, totImp = 0, prevDel = 0, prevImp = 0, totBal = 0;
+  rptMs.forEach((k) => {
+    const s = summ(k);
+    totDel += s.del;
+    totImp += s.imp;
+    totBal = s.bal;
+  });
+  availablePrev.forEach((k) => {
+    const s = summ(k);
+    prevDel += s.del;
+    prevImp += s.imp;
+  });
+
+  const [curY] = rptMs[0].split("-").map(Number);
+  const [lastY] = prevMs[0].split("-").map(Number);
+  const [lastM] = rptMs[rptMs.length - 1].split("-").map(Number);
+  const rangeLbl = rptMs.length === 1
+    ? `${MO[lastM - 1]} ${curY}`
+    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${curY} → ${MO[lastM - 1]} ${curY}`;
+  const prevRangeLbl = rptMs.length === 1
+    ? `${MO[lastM - 1]} ${lastY}`
+    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${lastY} → ${MO[lastM - 1]} ${lastY}`;
+
+  const kpis = [
+    { lbl: "Total Receive",  c: totImp, p: prevImp, col: "#dc2626" },
+    { lbl: "Total Delivery", c: totDel, p: prevDel, col: "#2563eb" },
+    { lbl: "Closing Balance",c: totBal, p: summ(availablePrev[availablePrev.length - 1]).bal, col: "#059669" },
+    { lbl: "Efficiency %",   c: totImp ? Math.round((totDel / totImp) * 100) : 0,
+                             p: prevImp ? Math.round((prevDel / prevImp) * 100) : 0,
+                             col: "#7c3aed", pct: true },
+    { lbl: "Net Change",     c: totImp - totDel, p: prevImp - prevDel, col: "#d97706" },
+  ];
+
+  let html = `<div class="simple-table-container"><table class="simple-table">
+    <thead><tr>
+      <th style="text-align:left">Metric</th>
+      <th>${rangeLbl}</th>
+      <th>${prevRangeLbl}</th>
+      <th>Change</th>
+      <th>% Change</th>
+    </tr></thead><tbody>`;
+
+  kpis.forEach((r) => {
+    const diff = r.c - r.p;
+    const pctV = r.p !== 0 ? Math.round((diff / r.p) * 100) : r.c > 0 ? 100 : 0;
+    const dc = diff >= 0 ? "#16a34a" : "#dc2626";
+    html += `<tr>
+      <td style="text-align:left;font-weight:700;color:${r.col}">${r.lbl}</td>
+      <td style="font-weight:700;color:${r.col}">${fmt(r.c)}${r.pct ? "%" : ""}</td>
+      <td style="color:#64748b">${fmt(r.p)}${r.pct ? "%" : ""}</td>
+      <td style="font-weight:700;color:${dc}">${diff >= 0 ? "+" : ""}${fmt(diff)}${r.pct ? "%" : ""}</td>
+      <td style="font-weight:700;color:${dc}">${diff >= 0 ? "↑" : "↓"}${Math.abs(pctV)}%</td>
+    </tr>`;
+  });
+
+  html += `<tr style="background:#f8fafc"><td colspan="5" style="text-align:left;font-weight:700;color:#374151;padding:10px">📍 Per-Location Delivery Comparison</td></tr>`;
+
+  LOCS.forEach((loc, i) => {
+    let cDel = 0, pDel = 0;
+    rptMs.forEach((k) => { cDel += (DB[k] || []).reduce((s, r) => s + r.del[i], 0); });
+    availablePrev.forEach((k) => { pDel += (DB[k] || []).reduce((s, r) => s + r.del[i], 0); });
+    const diff = cDel - pDel;
+    const pctV = pDel > 0 ? Math.round((diff / pDel) * 100) : cDel > 0 ? 100 : 0;
+    const dc = diff >= 0 ? "#16a34a" : "#dc2626";
+    html += `<tr>
+      <td style="text-align:left;font-size:11px">
+        <span style="display:inline-block;width:8px;height:8px;background:${LOC_CFG[loc].bg};border-radius:2px;margin-right:5px;vertical-align:middle"></span>${loc}
+      </td>
+      <td style="color:#2563eb;font-weight:700">${fmt(cDel)}</td>
+      <td style="color:#64748b">${fmt(pDel)}</td>
+      <td style="color:${dc};font-weight:700">${diff >= 0 ? "+" : ""}${fmt(diff)}</td>
+      <td style="color:${dc};font-weight:700">${diff >= 0 ? "↑" : "↓"}${Math.abs(pctV)}%</td>
+    </tr>`;
+  });
+
+  return html + "</tbody></table></div>";
+}
+
+// ════════════════════════════════════════════════════
+//  AUCTION DELIVERY REPORT
+// ════════════════════════════════════════════════════
+
+function getAuctionRows() {
+  const from = auctionFilter.from;
+  const to = auctionFilter.to;
+  const allRows = [];
+  Object.keys(DB).sort().forEach(mk => {
+    (DB[mk] || []).forEach(row => {
+      if (!row.date) return;
+      if (from && row.date < from) return;
+      if (to && row.date > to) return;
+      allRows.push({ ...row, mk });
+    });
+  });
+  return allRows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function syncAuctionFilterUI() {
+  const fromEl = document.getElementById("auc-from");
+  const toEl = document.getElementById("auc-to");
+  const badge = document.getElementById("auc-filter-badge");
+  if (fromEl) fromEl.value = auctionFilter.from || "";
+  if (toEl) toEl.value = auctionFilter.to || "";
+  if (badge) {
+    if (auctionFilter.from || auctionFilter.to) {
+      badge.textContent = `Filtered: ${auctionFilter.from || "start"} → ${auctionFilter.to || "today"}`;
+    } else {
+      badge.textContent = "Showing all available data";
+    }
+  }
+  document.querySelectorAll(".auc-preset-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.aucPreset === (auctionFilter.preset || "all"));
+  });
+}
+
+function syncAuctionFilterBadge() {
+  const from = document.getElementById("auc-from")?.value || "";
+  const to = document.getElementById("auc-to")?.value || "";
+  const badge = document.getElementById("auc-filter-badge");
+  if (!badge) return;
+  badge.textContent = (from || to)
+    ? `Custom: ${from || "start"} → ${to || "today"}`
+    : "Showing all available data";
+}
+
+function applyAuctionPreset(preset) {
+  const today = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const dateStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const todayStr = dateStr(today);
+
+  if (preset === "custom") {
+    const el = document.getElementById("auc-custom-range");
+    if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+    document.querySelectorAll(".auc-preset-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.aucPreset === "custom");
+    });
+    return;
+  }
+
+  let from = "", to = "";
+  if (preset === "7d") {
+    const d = new Date(today); d.setDate(d.getDate() - 6);
+    from = dateStr(d); to = todayStr;
+  } else if (preset === "30d") {
+    const d = new Date(today); d.setDate(d.getDate() - 29);
+    from = dateStr(d); to = todayStr;
+  } else if (preset === "90d") {
+    const d = new Date(today); d.setDate(d.getDate() - 89);
+    from = dateStr(d); to = todayStr;
+  } else if (preset === "ytd") {
+    from = `${today.getFullYear()}-01-01`; to = todayStr;
+  }
+  // "all" → from/to stay ""
+
+  auctionFilter.from = from;
+  auctionFilter.to = to;
+  auctionFilter.preset = preset;
+
+  const crEl = document.getElementById("auc-custom-range");
+  if (crEl) crEl.style.display = "none";
+
+  document.getElementById("rpt-auction").innerHTML = renderAuctionReport();
+  syncAuctionFilterUI();
+}
+
+function toggleAucCustomRange() {
+  applyAuctionPreset("custom");
+}
+
+function applyAuctionFilter() {
+  let from = document.getElementById("auc-from")?.value || "";
+  let to = document.getElementById("auc-to")?.value || "";
+  if (from && to && from > to) { [from, to] = [to, from]; }
+  auctionFilter.from = from;
+  auctionFilter.to = to;
+  auctionFilter.preset = "custom";
+  document.getElementById("rpt-auction").innerHTML = renderAuctionReport();
+  syncAuctionFilterUI();
+}
+
+function resetAuctionFilter() {
+  auctionFilter.from = "";
+  auctionFilter.to = "";
+  auctionFilter.preset = "all";
+  const fromEl = document.getElementById("auc-from");
+  const toEl = document.getElementById("auc-to");
+  if (fromEl) fromEl.value = "";
+  if (toEl) toEl.value = "";
+  const crEl = document.getElementById("auc-custom-range");
+  if (crEl) crEl.style.display = "none";
+  document.getElementById("rpt-auction").innerHTML = renderAuctionReport();
+  syncAuctionFilterUI();
+}
+
+function renderAuctionReport() {
+  const rows = getAuctionRows();
+
+  // Aggregate stats (needed for hero even if no rows)
+  const totalAuc = rows.reduce((s, r) => s + (parseInt(r.av) || 0), 0);
+  const totalDel = rows.reduce((s, r) => s + (r.del || []).reduce((a, b) => a + (parseInt(b) || 0), 0), 0);
+  const grandTotal = totalDel + totalAuc;
+  const aucShare = grandTotal > 0 ? Math.round(totalAuc / grandTotal * 100) : 0;
+  const activeDays = rows.filter(r => (parseInt(r.av) || 0) > 0).length;
+
+  // Update hero stats panel
+  const heroEl = document.getElementById("auc-hero-stats");
+  if (heroEl) {
+    heroEl.innerHTML = `
+      <div class="auc-hero-stat">
+        <div class="auc-hero-stat-val">${fmt(totalAuc)}</div>
+        <div class="auc-hero-stat-lbl">Total</div>
+      </div>
+      <div class="auc-hero-stat">
+        <div class="auc-hero-stat-val">${aucShare}%</div>
+        <div class="auc-hero-stat-lbl">Share</div>
+      </div>
+      <div class="auc-hero-stat">
+        <div class="auc-hero-stat-val">${activeDays}</div>
+        <div class="auc-hero-stat-lbl">Active Days</div>
+      </div>`;
+  }
+
+  if (!rows.length) {
+    return `
+      <div class="auc-empty">
+        <div class="auc-empty-icon">🚗</div>
+        <div class="auc-empty-title">No auction data found</div>
+        <div class="auc-empty-sub">No records match the selected date range. Try a different filter.</div>
+      </div>`;
+  }
+
+  // Location map
+  const locMap = {};
+  rows.forEach(r => {
+    const v = parseInt(r.av) || 0;
+    if (!v) return;
+    const loc = (r.al || "").trim() || "Unknown";
+    if (!locMap[loc]) locMap[loc] = { days: 0, total: 0 };
+    locMap[loc].days++;
+    locMap[loc].total += v;
+  });
+  const uniqueLocs = Object.keys(locMap).length;
+
+  // Peak day
+  let peakRow = null;
+  rows.forEach(r => {
+    const v = parseInt(r.av) || 0;
+    if (!peakRow || v > (parseInt(peakRow.av) || 0)) peakRow = r;
+  });
+  const peakVal = peakRow ? (parseInt(peakRow.av) || 0) : 0;
+  const peakDate = peakRow && peakVal > 0 ? peakRow.date : "—";
+  const avgPerDay = rows.length > 0 ? (totalAuc / rows.length).toFixed(1) : "0.0";
+  const avgActiveDay = activeDays > 0 ? (totalAuc / activeDays).toFixed(1) : "0.0";
+
+  // ── KPI Grid ──────────────────────────────────────
+  const kpiHtml = `
+    <div class="auc-kpi-grid">
+      <div class="auc-kpi-card">
+        <div class="auc-kpi-top">
+          <div class="auc-kpi-icon-wrap">🚗</div>
+          <span class="auc-kpi-tag">Total</span>
+        </div>
+        <div class="auc-kpi-val">${fmt(totalAuc)}</div>
+        <div class="auc-kpi-lbl">Auction Deliveries</div>
+      </div>
+      <div class="auc-kpi-card">
+        <div class="auc-kpi-top">
+          <div class="auc-kpi-icon-wrap">📊</div>
+          <span class="auc-kpi-tag">Share</span>
+        </div>
+        <div class="auc-kpi-val">${aucShare}%</div>
+        <div class="auc-kpi-lbl">of All Deliveries</div>
+        <div class="auc-kpi-sub">${fmt(totalDel)} regular</div>
+      </div>
+      <div class="auc-kpi-card">
+        <div class="auc-kpi-top">
+          <div class="auc-kpi-icon-wrap">📅</div>
+          <span class="auc-kpi-tag">Activity</span>
+        </div>
+        <div class="auc-kpi-val">${activeDays}</div>
+        <div class="auc-kpi-lbl">Active Auction Days</div>
+        <div class="auc-kpi-sub">of ${rows.length} days in range</div>
+      </div>
+      <div class="auc-kpi-card">
+        <div class="auc-kpi-top">
+          <div class="auc-kpi-icon-wrap">🏆</div>
+          <span class="auc-kpi-tag">Peak</span>
+        </div>
+        <div class="auc-kpi-val">${fmt(peakVal)}</div>
+        <div class="auc-kpi-lbl">Single Day Record</div>
+        <div class="auc-kpi-sub">${peakDate}</div>
+      </div>
+      <div class="auc-kpi-card secondary">
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">📍</div></div>
+        <div class="auc-kpi-val">${uniqueLocs}</div>
+        <div class="auc-kpi-lbl">Unique Locations</div>
+      </div>
+      <div class="auc-kpi-card secondary">
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">📈</div></div>
+        <div class="auc-kpi-val">${avgPerDay}</div>
+        <div class="auc-kpi-lbl">Avg / All Days</div>
+      </div>
+      <div class="auc-kpi-card secondary">
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">⚡</div></div>
+        <div class="auc-kpi-val">${avgActiveDay}</div>
+        <div class="auc-kpi-lbl">Avg / Active Day</div>
+      </div>
+      <div class="auc-kpi-card secondary">
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">🗓️</div></div>
+        <div class="auc-kpi-val">${rows.length}</div>
+        <div class="auc-kpi-lbl">Days in Range</div>
+      </div>
+    </div>`;
+
+  // ── Location Breakdown ────────────────────────────
+  const sortedLocs = Object.entries(locMap).sort((a, b) => b[1].total - a[1].total);
+  const maxLocTotal = sortedLocs[0]?.[1].total || 1;
+  let locHtml = "";
+  if (!sortedLocs.length) {
+    locHtml = `<div class="auc-empty"><div class="auc-empty-sub">No auction deliveries recorded in this range.</div></div>`;
   } else {
-    showSuccess(`Exporting ${type} report...`);
+    locHtml = `<div class="auc-loc-list">`;
+    sortedLocs.forEach(([loc, d], i) => {
+      const barW = Math.round(d.total / maxLocTotal * 100);
+      const share = Math.round(d.total / (totalAuc || 1) * 100);
+      const avg = (d.total / d.days).toFixed(1);
+      locHtml += `
+        <div class="auc-loc-row">
+          <div class="auc-loc-rank ${i === 0 ? "top" : ""}">${i + 1}</div>
+          <div class="auc-loc-name-cell">
+            <span class="auc-loc-name">${loc}</span>
+            <div class="auc-loc-bar-track">
+              <div class="auc-loc-bar-fill" style="width:${barW}%"></div>
+            </div>
+          </div>
+          <div class="auc-loc-stat-col">
+            <div class="auc-loc-stat">${fmt(d.total)}</div>
+            <div class="auc-loc-meta">${d.days}d · avg ${avg}</div>
+          </div>
+          <div class="auc-loc-share-pill">${share}%</div>
+        </div>`;
+    });
+    locHtml += `</div>`;
+  }
+
+  // ── Monthly Trend ─────────────────────────────────
+  const monthMap = {};
+  rows.forEach(r => {
+    const m = r.date?.substring(0, 7);
+    if (!m) return;
+    if (!monthMap[m]) monthMap[m] = { total: 0, activeDays: 0, totalDays: 0 };
+    const v = parseInt(r.av) || 0;
+    monthMap[m].total += v;
+    monthMap[m].totalDays++;
+    if (v > 0) monthMap[m].activeDays++;
+  });
+  const sortedMonths = Object.keys(monthMap).sort();
+  const maxMonthTotal = Math.max(...sortedMonths.map(m => monthMap[m].total), 1);
+  let monthHtml = "";
+  if (sortedMonths.length > 1) {
+    monthHtml = `<div class="auc-month-list">`;
+    sortedMonths.forEach(m => {
+      const d = monthMap[m];
+      const barW = Math.round(d.total / maxMonthTotal * 100);
+      monthHtml += `
+        <div class="auc-month-row">
+          <div class="auc-month-label">${m}</div>
+          <div class="auc-month-bar-track">
+            <div class="auc-month-bar-fill" style="width:${Math.max(barW, 2)}%"></div>
+          </div>
+          <div class="auc-month-val">${fmt(d.total)}</div>
+          <div class="auc-month-days">${d.activeDays}d</div>
+        </div>`;
+    });
+    monthHtml += `</div>`;
+  }
+
+  // ── Daily Breakdown ───────────────────────────────
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let dailyHtml = `
+    <div class="auc-daily-wrap">
+    <table class="auc-daily-tbl">
+      <thead><tr>
+        <th>Date</th>
+        <th>Auction Location</th>
+        <th style="text-align:right">Auction Del.</th>
+        <th style="text-align:right">Regular Del.</th>
+        <th>Split</th>
+      </tr></thead>
+      <tbody>`;
+  [...rows].reverse().forEach(r => {
+    const aucV = parseInt(r.av) || 0;
+    const regV = (r.del || []).reduce((s, v) => s + (parseInt(v) || 0), 0);
+    const total = aucV + regV;
+    const aucBarW = total > 0 ? Math.round(aucV / total * 100) : 0;
+    const d = dow(r.date);
+    const dayName = dayNames[d] ?? "";
+    const isWeekend = d === 5 || d === 6;
+    const hasLoc = !!(r.al && r.al.trim());
+    dailyHtml += `
+      <tr class="${isWeekend ? "weekend" : ""}">
+        <td>
+          <div class="auc-date-cell">
+            <span class="auc-date-str">${r.date}</span>
+            <span class="auc-day-tag ${isWeekend ? "is-weekend" : ""}">${dayName}</span>
+          </div>
+        </td>
+        <td><span class="auc-loc-chip ${hasLoc ? "active" : ""}">${r.al || "—"}</span></td>
+        <td style="text-align:right">
+          ${aucV > 0 ? `<span class="auc-auc-val">${fmt(aucV)}</span>` : `<span class="auc-auc-nil">—</span>`}
+        </td>
+        <td style="text-align:right;font-weight:600;color:#475569;font-variant-numeric:tabular-nums">${fmt(regV)}</td>
+        <td>
+          <div class="auc-prop-wrap">
+            <div class="auc-prop-bar">
+              <div class="auc-prop-auc" style="width:${aucBarW}%"></div>
+              <div class="auc-prop-reg" style="width:${100 - aucBarW}%"></div>
+            </div>
+            <div class="auc-prop-label">${aucBarW}% auction</div>
+          </div>
+        </td>
+      </tr>`;
+  });
+  dailyHtml += `</tbody></table></div>`;
+
+  return `
+    ${kpiHtml}
+    <div class="auc-section-card">
+      <div class="auc-section-hdr">
+        <div class="auc-section-icon">📍</div>
+        <h3 class="auc-section-title">By Auction Location</h3>
+        <span class="auc-section-count">${sortedLocs.length} location${sortedLocs.length !== 1 ? "s" : ""}</span>
+      </div>
+      ${locHtml}
+    </div>
+    ${sortedMonths.length > 1 ? `
+    <div class="auc-section-card">
+      <div class="auc-section-hdr">
+        <div class="auc-section-icon">📅</div>
+        <h3 class="auc-section-title">Monthly Trend</h3>
+        <span class="auc-section-count">${sortedMonths.length} months</span>
+      </div>
+      ${monthHtml}
+    </div>` : ""}
+    <div class="auc-section-card">
+      <div class="auc-section-hdr">
+        <div class="auc-section-icon">📋</div>
+        <h3 class="auc-section-title">Daily Breakdown</h3>
+        <span class="auc-section-count">${rows.length} day${rows.length !== 1 ? "s" : ""}</span>
+      </div>
+      ${dailyHtml}
+    </div>`;
+}
+
+function exportReport() {
+  if (!rptMs.length) {
+    showSuccess("No data to export");
+    return;
+  }
+  try {
+    const wb = XLSX.utils.book_new();
+    const allRows = [];
+    rptMs.forEach((k) => {
+      (DB[k] || []).forEach((r) => allRows.push(r));
+    });
+
+    const h1 = [
+      "Date", "Day",
+      ...LOCS.flatMap((l) => [l, "", ""]),
+      "Total Delivery", "Auction Loc", "Auction Val", "Closing Balance", "Total Import",
+    ];
+    const h2 = [
+      "", "",
+      ...LOCS.flatMap(() => ["Balance", "Delivery", "Import"]),
+      "", "", "", "", "",
+    ];
+    const aoa = [h1, h2];
+    allRows.forEach((r) => {
+      const row = [r.date, DAYS[dow(r.date)]];
+      LOCS.forEach((_, li) => row.push(r.bal[li], r.del[li], r.imp[li]));
+      row.push(
+        r.del.reduce((a, b) => a + b, 0),
+        r.al,
+        r.av,
+        getClosing(r),
+        r.imp.reduce((a, b) => a + b, 0),
+      );
+      aoa.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 5 },
+      ...LOCS.flatMap(() => [{ wch: 9 }, { wch: 8 }, { wch: 8 }]),
+      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 12 },
+    ];
+
+    const from = rptMs[0];
+    const to = rptMs[rptMs.length - 1];
+    const label = from === to ? from : `${from}_to_${to}`;
+    XLSX.utils.book_append_sheet(wb, ws, label);
+    XLSX.writeFile(wb, `Car_Balance_Report_${label}.xlsx`);
+    showSuccess("Report exported successfully");
+  } catch (e) {
+    console.error("Export failed:", e);
+    showSuccess("Export failed: " + e.message);
   }
 }
 
@@ -6822,20 +7712,64 @@ const SHORTCUTS = {
 };
 
 function showShortcutsHelp() {
-  const helpText = `
-      Keyboard Shortcuts:
-      ────────────────────
-      Ctrl+S     - Save data
-      Ctrl+Z     - Undo last action
-      Ctrl+E     - Export data
-      Ctrl+,     - Settings
-      1-4        - Switch tabs
-      Escape     - Close modals
-      F1         - Show this help
-      ←/→        - Previous/Next month
-      ────────────────────
-              `;
-  alert(helpText.trim());
+  const existing = document.getElementById("help-modal");
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const modal = document.createElement("div");
+  modal.id = "help-modal";
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;justify-content:center;align-items:center;z-index:10001;";
+  modal.innerHTML = `<div style="background:#fff;border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);max-width:480px;width:90%;padding:0;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#1a3a5c,#2d5a87);padding:20px 24px;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;font-size:18px;">Keyboard Shortcuts</h3>
+      <button onclick="document.getElementById('help-modal').remove()" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;padding:4px 8px;">&times;</button>
+    </div>
+    <div style="padding:24px;">
+      <div style="display:grid;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Save data</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Ctrl+S</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Undo last action</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Ctrl+Z</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Export to Excel</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Ctrl+E</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Open Settings</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Ctrl+,</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Logout</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Ctrl+L</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Previous / Next month</span>
+          <div style="display:flex;gap:4px;">
+            <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">&larr;</kbd>
+            <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">&rarr;</kbd>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Switch tabs (1-4)</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">1-4</kbd>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;">
+          <span style="color:#475569;">Close modals</span>
+          <kbd style="background:#e2e8f0;padding:4px 10px;border-radius:6px;font-family:monospace;font-size:13px;border:1px solid #cbd5e1;">Esc</kbd>
+        </div>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid #e2e8f0;text-align:center;">
+      <span style="color:#64748b;font-size:13px;">Press <strong>F1</strong> anytime to show this help</span>
+    </div>
+  </div>`;
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
 }
 
 function navigateMonth(direction) {
@@ -6890,6 +7824,21 @@ function hideLoading() {
   progressBar.classList.remove("active");
 }
 
+function showErrorOverlay(msg) {
+  let el = document.getElementById("error-overlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "error-overlay";
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:99999;opacity:0;transition:opacity 0.3s ease;";
+    el.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px 32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div id="error-msg" style="font-size:14px;color:#374151;margin-bottom:16px;word-break:break-word"></div><button onclick="document.getElementById(\'error-overlay\').style.display=\'none\'" style="background:#ef4444;color:#fff;border:none;padding:8px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Dismiss</button></div>';
+    document.body.appendChild(el);
+    requestAnimationFrame(() => { el.style.opacity = "1"; });
+  }
+  document.getElementById("error-msg").textContent = msg;
+  el.style.display = "flex";
+  requestAnimationFrame(() => { el.style.opacity = "1"; });
+}
+
 function showButtonLoading(buttonId) {
   const button = document.getElementById(buttonId);
   if (button) {
@@ -6906,6 +7855,7 @@ function showButtonLoading(buttonId) {
 
 // Function to manually fix month transitions (callable from console)
 function fixMonthTransitions() {
+  if (!confirm("This will recalculate all month transitions and overwrite any discrepancies. Continue?")) return;
   requireLogin(() => {
     const allMonths = Object.keys(DB).sort();
     let changesMade = false;
@@ -6951,7 +7901,6 @@ function fixMonthTransitions() {
           currentDay.bal = calcLocBals(prevDay.bal, prevDay.del, prevDay.imp);
         }
 
-        console.log(`Fixed transition from ${prevMonth} to ${currentMonth}`);
         changesMade = true;
       }
     }
@@ -7041,6 +7990,10 @@ function init() {
 
     // Load from Firebase for cloud sync
     loadFromFirebase(() => {
+      const corrupted = validateDB();
+      if (corrupted) {
+        buildHist();
+      }
       const n = new Date();
       const currentYear = n.getFullYear();
       const currentMonth = n.getMonth() + 1;
@@ -7064,6 +8017,23 @@ function init() {
       if (firebaseDb) {
         document.getElementById("gs-status").innerHTML =
           '<span style="color:#059669">✅ Connected to cloud</span>';
+        firebaseDb.ref(".info/connected").on("value", (snap) => {
+          const el = document.getElementById("conn-status");
+          if (snap.val() === true) {
+            el.textContent = "Online";
+            el.style.color = "#4ade80";
+            el.style.borderColor = "rgba(74,222,128,0.3)";
+          } else {
+            el.textContent = "Offline";
+            el.style.color = "#f87171";
+            el.style.borderColor = "rgba(248,113,113,0.3)";
+          }
+        });
+      } else {
+        const el = document.getElementById("conn-status");
+        el.textContent = "Local only";
+        el.style.color = "#fbbf24";
+        el.style.borderColor = "rgba(251,191,36,0.3)";
       }
     });
     const n = new Date();
@@ -7109,8 +8079,12 @@ function initializeKeyboardShortcuts() {
 
 // Generate next months seamlessly
 function generateNextMonths() {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1; // Current month (1-12)
+  if (!confirm("This will generate the next month based on the current month's closing balances. Continue?")) return;
+  const now = new Date();
+  const todayInTz = now.toLocaleDateString("en-CA", { timeZone: sett.tz });
+  const [ty, tm, td] = todayInTz.split("-").map(Number);
+  const currentYear = ty;
+  const currentMonth = tm;
 
   // Check if current month exists and has data
   const currentMonthKey = mk(currentYear, currentMonth);
@@ -7237,9 +8211,9 @@ function checkAndFixMonthTransitions() {
     // Get closing balances from previous month
     const prevLastDay = prevMonthData[prevMonthData.length - 1];
     const prevClosingBalances = calcLocBals(
-      prevLastDay.bal,
-      prevLastDay.del,
-      prevLastDay.imp,
+      prevLastDay.bal || Array(LOCS.length).fill(0),
+      prevLastDay.del || Array(LOCS.length).fill(0),
+      prevLastDay.imp || Array(LOCS.length).fill(0),
     );
 
     // Get opening balances from current month (first day, from stored ob if available)
@@ -7255,9 +8229,6 @@ function checkAndFixMonthTransitions() {
     );
 
     if (!balancesMatch) {
-      console.log(
-        `Balance mismatch fixed: ${prevMonth} closing ${prevClosingBalances} -> ${currentMonth} opening ${compareBase}`,
-      );
       // Update stored opening balance and recompute with transfers
       currentFirstDay.ob = prevClosingBalances.slice();
       currentFirstDay.bal = prevClosingBalances.slice();
@@ -7275,7 +8246,6 @@ function checkAndFixMonthTransitions() {
 
   if (changesMade) {
     // Don't set dirty during initialization - this is automatic correction
-    console.log("Month transitions automatically corrected during load");
   }
 }
 
@@ -7288,19 +8258,13 @@ function ensureAllMonthsHaveColumns() {
     rows.forEach((row, rowIdx) => {
       // Ensure arrays have correct length for all locations
       if (!row.del || row.del.length !== LOCS.length) {
-        row.del = LOCS.map(() =>
-          row.del ? row.del[row.del.length - 1] || 0 : 0,
-        );
+        row.del = LOCS.map(() => 0);
       }
       if (!row.imp || row.imp.length !== LOCS.length) {
-        row.imp = LOCS.map(() =>
-          row.imp ? row.imp[row.imp.length - 1] || 0 : 0,
-        );
+        row.imp = LOCS.map(() => 0);
       }
       if (!row.bal || row.bal.length !== LOCS.length) {
-        row.bal = LOCS.map(() =>
-          row.bal ? row.bal[row.bal.length - 1] || 0 : 0,
-        );
+        row.bal = LOCS.map(() => 0);
       }
 
       // Ensure other required fields exist
@@ -7352,7 +8316,6 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("/service-worker.js")
       .then((registration) => {
-        console.log("Service Worker registered:", registration.scope);
 
         // Check for updates periodically
         setInterval(() => {
@@ -7360,7 +8323,6 @@ if ("serviceWorker" in navigator) {
         }, 60000); // Check every minute
       })
       .catch((error) => {
-        console.log("Service Worker registration failed:", error);
       });
   });
 }
@@ -7371,12 +8333,10 @@ window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredPrompt = e;
   // Show install button or notification
-  console.log("PWA can be installed");
 });
 
 // Handle successful app installation
 window.addEventListener("appinstalled", () => {
-  console.log("PWA was installed");
   deferredPrompt = null;
 });
 
@@ -7384,7 +8344,6 @@ window.addEventListener("appinstalled", () => {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", (event) => {
     if (event.data.type === "SYNC_START") {
-      console.log("Data sync started...");
     }
   });
 }
