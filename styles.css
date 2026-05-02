@@ -3787,7 +3787,8 @@ input.ci.auc {
 /* ── Print / PDF Export ── */
 @media print {
   .topbar, .nav, .mbar, .t-right, .sv, #conn-status,
-  .page:not(#page-daily):not(#page-report) { display: none !important; }
+  .page:not(#page-daily):not(#page-report),
+  .ov, .mbox, #loading-overlay, #error-overlay { display: none !important; }
 
   body { background: #fff !important; color: #000 !important; font-size: 10pt; }
 
@@ -3802,6 +3803,19 @@ input.ci.auc {
   table.dt th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   .card, .gc, .ch-card { break-inside: avoid; }
+
+  .rpt-sec { break-inside: avoid; }
+  .rpt-sec.collapsed .rpt-sec-body {
+    display: block !important;
+    max-height: none !important;
+    padding: 0 16px 16px !important;
+    overflow: visible !important;
+  }
+  .rpt-sec-hdr { cursor: default !important; }
+  .rpt-sec-hdr:hover { background: none !important; }
+  .rpt-sec-arrow { display: none !important; }
+
+  .rpt-filter-panel, .rpt-preset-group, .rpt-compare-group, select { display: none !important; }
 
   @page { margin: 1cm; size: landscape; }
 }
