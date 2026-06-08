@@ -9,10 +9,12 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 ## Quick Start
 
 1. Open `index.html` in any modern browser
-2. Add daily delivery/receipt data via the Daily Entry page
-3. View analytics on the Dashboard tab
-4. Generate reports on the Report tab
-5. Export data as Excel via the top bar
+2. Add daily delivery/receipt data via the **Daily Entry** tab
+3. Enter rotation numbers in the **Rot No** column (click any cell to edit)
+4. View analytics on the **Charts** tab
+5. Generate reports on the **Reports** tab
+6. Track inter-location movements on the **Car Transfer** tab
+7. Export data as Excel via the top bar (current month or all months)
 
 **No server required.** The app runs entirely from local files and syncs to Firebase when online.
 
@@ -25,22 +27,31 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 - Opening/closing balance auto-calculation
 - Holiday/weekend day marking
 - Real-time summary cards and group totals
+- **Rot No column** — inline-editable rotation number per row (up to 30 chars), included in Excel export
 
-### Analytics Dashboard
+### Analytics Dashboard (Charts)
 - 7 focused charts: daily receive vs delivery, closing balance, month comparison, location performance, balance trend, net flow
 - KPI cards with range-based metrics
 - Location summary table
 - Period filtering (6m, 12m, all-time)
 
 ### Reports
-- 12 collapsible report sections (expandable/collapsible on demand)
-- Custom date range selector
+- 13 collapsible report sections (expandable/collapsible on demand)
+- Preset filters: This Month, Last Month, 3M, 6M, YTD, 12M, All
+- Custom date range selector with previous-period / previous-year comparison
 - Executive summary with auction delivery KPIs
 - Monthly trends, location rankings, peak days, day-of-week patterns
+- Group performance (Warehouse / Yard / Shed)
+- Location efficiency ranking
+- Daily operations log
 - Year-over-year comparison
 - Car transfer history
 - Auction delivery analytics
 - Print-optimized layout
+
+### Car Transfer
+- Track inter-location car movements
+- Full transfer history with date, source, destination, and quantity
 
 ### Data Management
 - **LocalStorage** primary storage (works offline)
@@ -54,11 +65,11 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 
 ## File Structure
 
-| File | Purpose | Size |
+| File | Purpose | Lines |
 |---|---|---|
-| `index.html` | Application shell + UI | ~50KB |
-| `app.js` | All application logic | ~320KB |
-| `styles.css` | Responsive styling + print CSS | ~140KB |
+| `index.html` | Application shell + UI | ~1,008 |
+| `app.js` | All application logic | ~8,380 |
+| `styles.css` | Responsive styling + print CSS | ~4,011 |
 | `service-worker.js` | PWA offline caching | ~3KB |
 | `manifest.json` | Web app manifest | ~1KB |
 | `car.png` | App icon/logo | Image |
@@ -189,7 +200,7 @@ firebase deploy
 
 ## Version
 
-**1.0.0** — Production release (May 2026)
+**1.1.0** — Added Rot No column, expanded report sections (June 2026)
 
 ---
 

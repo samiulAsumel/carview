@@ -1602,6 +1602,10 @@ col.cti {
   width: 55px;
 }
 
+col.crn {
+  width: 75px;
+}
+
 /* ── HEADER STYLES ── */
 th {
   white-space: nowrap;
@@ -1722,6 +1726,10 @@ td.s8 {
 
 .thi {
   background: rgba(249, 115, 22, 1);
+}
+
+.thrn {
+  background: rgba(99, 102, 241, 1);
 }
 
 /* NO GAP between location header and Balance/Del/Imp — no border */
@@ -1847,6 +1855,65 @@ th.thi {
   background: linear-gradient(135deg, #92400e 0%, #ea580c 50%, #f97316 100%);
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+th.thrn {
+  background: linear-gradient(135deg, #3730a3 0%, #4f46e5 50%, #6366f1 100%);
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  min-width: 75px;
+  white-space: nowrap;
+}
+
+td.trn {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 50%, #a5b4fc 100%);
+  text-align: center;
+  cursor: pointer;
+  width: 75px;
+  min-width: 75px;
+  max-width: 75px;
+  padding: 3px 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  line-height: 1.1;
+  transition: background 0.15s ease;
+  overflow: hidden;
+}
+
+td.trn:hover {
+  background: linear-gradient(135deg, #c7d2fe 0%, #a5b4fc 50%, #818cf8 100%);
+}
+
+.rn-text {
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  font-size: 11px;
+  color: #3730a3;
+  letter-spacing: 0.5px;
+  display: block;
+}
+
+.rn-dash {
+  color: #818cf8;
+  font-size: 14px;
+  display: block;
+}
+
+input.rot-edit {
+  width: 9ch;
+  min-width: 9ch;
+  max-width: 100%;
+  background: #ffffff;
+  border: 2px solid #6366f1;
+  border-radius: 4px;
+  text-align: center;
+  font-family: "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3730a3;
+  padding: 2px 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  letter-spacing: 0.5px;
 }
 
 /* Location-specific header gradients */

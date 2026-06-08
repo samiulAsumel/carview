@@ -4093,6 +4093,7 @@ function ensureMonth(y, m) {
         ob: [...openBals], // store original opening balance for transfer recalc
         al: "",
         av: "",
+        rn: "",
       });
     } else {
       const prev = DB[key].slice(-1)[0];
@@ -4104,6 +4105,7 @@ function ensureMonth(y, m) {
         bal: newBals,
         al: "",
         av: "",
+        rn: "",
       });
     }
   }
@@ -5090,6 +5092,30 @@ function onAuc(key, ri, f, val) {
     setDirty(true);
   });
 }
+function editRotNo(td, key, ri) {
+  if (td.querySelector("input")) return;
+  requireLogin(() => {
+    const saved = DB[key][ri].rn || "";
+    td.innerHTML = `<input class="rot-edit" type="text" maxlength="30" value="${saved}" placeholder="Enter Rot No">`;
+    const inp = td.querySelector("input");
+    inp.focus();
+    inp.select();
+    const commit = () => {
+      const val = inp.value.trim().slice(0, 30);
+      DB[key][ri].rn = val;
+      setDirty(true);
+      td.innerHTML = val ? `<span class="rn-text">${val}</span>` : '<span class="rn-dash">—</span>';
+    };
+    inp.addEventListener("blur", commit);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") inp.blur();
+      if (e.key === "Escape") {
+        td.innerHTML = saved ? `<span class="rn-text">${saved}</span>` : '<span class="rn-dash">—</span>';
+      }
+    });
+  });
+}
+
 function onOpenBal(key, ri, li, val) {
   requireLogin(() => {
     const validatedValue = validateAndShowError(
@@ -5480,7 +5506,8 @@ function renderTable() {
   h1 += `<th class="thd gsp" rowspan="2">Total<br>Delivery</th>
               <th class="tha"     rowspan="2">Auction<br>Delivery</th>
               <th class="thcb gsp" rowspan="2">Closing<br>Balance</th>
-              <th class="thi gsp" rowspan="2">Total<br>Import</th></tr>`;
+              <th class="thi gsp" rowspan="2">Total<br>Import</th>
+              <th class="thrn gsp" rowspan="2">Rot<br>No</th></tr>`;
 
   // Row 2 sub-headers — SAME color as parent, NO top border gap
   let h2 = "<tr>";
@@ -5530,6 +5557,8 @@ function renderTable() {
     tr += `<td class="col-sep"><input class="ci auc" type="number" min="0" value="${row.av || 0}" onchange="onAuc('${cur}',${ri},'av',this.value)" style="width:100%"></td>`;
     tr += `<td class="tcb gsp">${closing}</td>`;
     tr += `<td class="timp gsp">${tImp || "—"}</td>`;
+    const rnVal = row.rn || "";
+    tr += `<td class="trn gsp" title="Click to edit" onclick="editRotNo(this,'${cur}',${ri})">${rnVal ? `<span class="rn-text">${rnVal}</span>` : '<span class="rn-dash">—</span>'}</td>`;
     tr += "</tr>";
     body += tr;
   });
@@ -5556,7 +5585,8 @@ function renderTable() {
   foot += `<td class="gsp" style="color:#1d4ed8;font-size:12px">${td2 > 0 ? td2.toLocaleString() : "—"}</td>
                <td style="color:#7c3aed;font-size:14px;font-weight:700">${aucTotal > 0 ? aucTotal.toLocaleString() : "—"}</td>
                <td class="gsp" style="color:#166534;font-size:14px;font-weight:700">${lastClosing}</td>
-               <td class="gsp" style="color:#92400e;font-size:12px">${ti2 > 0 ? ti2.toLocaleString() : "—"}</td></tr>`;
+               <td class="gsp" style="color:#92400e;font-size:12px">${ti2 > 0 ? ti2.toLocaleString() : "—"}</td>
+               <td class="gsp"></td></tr>`;
   body += foot + "</tbody>";
 
   // Keep existing colgroup, just update thead/tbody
@@ -7621,11 +7651,13 @@ function doExport() {
       "Auction Val",
       "Closing Balance",
       "Total Import",
+      "Rot No",
     ];
     const h2 = [
       "",
       "",
       ...LOCS.flatMap(() => ["Balance", "Delivery", "Import"]),
+      "",
       "",
       "",
       "",
@@ -7642,6 +7674,7 @@ function doExport() {
         r.av,
         getClosing(r),
         r.imp.reduce((a, b) => a + b, 0),
+        r.rn || "",
       );
       aoa.push(row);
     });
@@ -7654,6 +7687,7 @@ function doExport() {
       { wch: 10 },
       { wch: 10 },
       { wch: 14 },
+      { wch: 12 },
       { wch: 12 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, `${MO[m - 1]} ${y}`);
