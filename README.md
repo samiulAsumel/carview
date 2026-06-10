@@ -61,14 +61,22 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 - Role-based user authentication
 - Auto-save with dirty-state tracking
 
+### Security
+- HTML escaping on all user-supplied data before rendering (XSS protection)
+- Strict Content-Security-Policy (allowlisted CDN sources only)
+- Subresource Integrity (SRI) hashes on all CDN scripts
+- SHA-256 password hashing via the Web Crypto API (no plaintext)
+- Minimum 8-character password requirement
+- Warning banner when the default admin password is still in use
+
 ---
 
 ## File Structure
 
 | File | Purpose | Lines |
 |---|---|---|
-| `index.html` | Application shell + UI | ~1,008 |
-| `app.js` | All application logic | ~8,380 |
+| `index.html` | Application shell + UI | ~1,024 |
+| `app.js` | All application logic | ~8,409 |
 | `styles.css` | Responsive styling + print CSS | ~4,011 |
 | `service-worker.js` | PWA offline caching | ~3KB |
 | `manifest.json` | Web app manifest | ~1KB |
@@ -102,11 +110,10 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 
 ### External Dependencies (CDN)
 - **Chart.js 4.4.0** — Data visualization
-- **SheetJS (XLSX)** — Excel export
-- **jsSHA** — SHA-256 hashing for passwords
-- **Firebase 9 SDK** — Cloud sync (optional)
+- **SheetJS (XLSX) 0.18.5** — Excel export
+- **Firebase 9.22.0 SDK** — Cloud sync (optional)
 
-All dependencies load from CDNs. The app degrades gracefully if CDN access is unavailable.
+All dependencies load from CDNs with Subresource Integrity (SRI) hashes. Password hashing uses the browser's built-in Web Crypto API (no extra library). The app degrades gracefully if CDN access is unavailable.
 
 ---
 
@@ -144,7 +151,10 @@ Edit `LOCS` array and `LOC_CFG` object in `app.js` to customize location names a
 - [x] Memory leak prevention (chart destruction)
 - [x] `prefers-reduced-motion` accessibility support
 - [x] User-facing error overlay with recovery
-- [x] `file://` protocol compatibility (CSP configured)
+- [x] Strict CSP with SRI hashes on all CDN scripts
+- [x] HTML escaping of user data (XSS protection)
+- [x] Default-password warning at startup
+- [x] Minimum 8-character passwords
 - [x] Print-optimized CSS
 - [x] Responsive design (mobile-first breakpoints)
 - [x] Service worker for offline caching
@@ -199,6 +209,8 @@ firebase deploy
 ---
 
 ## Version
+
+**1.2.0** — Security hardening: XSS escaping on user data, strict CSP, SRI hashes on CDN scripts, 8-character password minimum, default-password warning (June 2026)
 
 **1.1.0** — Added Rot No column, expanded report sections (June 2026)
 

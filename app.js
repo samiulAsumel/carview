@@ -3542,6 +3542,16 @@ const dIn = (y, m) => new Date(y, m, 0).getDate();
 const dow = (s) => new Date(s + "T00:00:00").getDay();
 const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "—");
 const pct = (a, b) => (b ? Math.round(((a - b) / b) * 100) : null);
+// Escape untrusted data before inserting into HTML (data may come from
+// other devices via Firebase sync, so treat all stored strings as untrusted)
+const esc = (s) =>
+  String(s ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
 
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -3827,10 +3837,11 @@ function showSuccess(message) {
   successDiv.innerHTML = `
                 <div class="success-content">
                   <span class="success-icon">✅</span>
-                  <span class="success-message">${message}</span>
+                  <span class="success-message"></span>
                   <button class="success-close" onclick="this.parentElement.parentElement.remove()">✕</button>
                 </div>
               `;
+  successDiv.querySelector(".success-message").textContent = message;
 
   // Add styles for success notification
   if (!document.querySelector("#success-styles")) {
@@ -4374,21 +4385,21 @@ function renderTransferPage() {
           const fromCfg = LOC_CFG[LOCS[t.from]] || {};
           const toCfg = LOC_CFG[LOCS[t.to]] || {};
           const noteHtml = t.note
-            ? `<span class="transfer-item-note" title="${t.note}">💬 ${t.note}</span>`
+            ? `<span class="transfer-item-note" title="${esc(t.note)}">💬 ${esc(t.note)}</span>`
             : `<span class="transfer-item-note"></span>`;
           return `<div class="transfer-item">
           <span class="transfer-item-qty">🚗 ${t.qty}</span>
-          <span class="transfer-item-from" style="background:${fromCfg.lt || "#fee2e2"};color:${fromCfg.bg || "#b91c1c"};border-color:${fromCfg.bg || "#fca5a5"}">${LOCS[t.from] || "Loc " + t.from}</span>
+          <span class="transfer-item-from" style="background:${fromCfg.lt || "#fee2e2"};color:${fromCfg.bg || "#b91c1c"};border-color:${fromCfg.bg || "#fca5a5"}">${LOCS[t.from] || "Loc " + esc(t.from)}</span>
           <span class="transfer-item-arrow">→</span>
-          <span class="transfer-item-to" style="background:${toCfg.lt || "#dcfce7"};color:${toCfg.bg || "#166534"};border-color:${toCfg.bg || "#86efac"}">${LOCS[t.to] || "Loc " + t.to}</span>
+          <span class="transfer-item-to" style="background:${toCfg.lt || "#dcfce7"};color:${toCfg.bg || "#166534"};border-color:${toCfg.bg || "#86efac"}">${LOCS[t.to] || "Loc " + esc(t.to)}</span>
           ${noteHtml}
-          <button class="transfer-item-del" onclick="removeCarTransfer('${date}', ${idx})" title="Remove this transfer">✕</button>
+          <button class="transfer-item-del" data-date="${esc(date)}" onclick="removeCarTransfer(this.dataset.date, ${idx})" title="Remove this transfer">✕</button>
         </div>`;
         })
         .join("");
 
       listHtml += `<div class="transfer-date-group">
-        <div class="transfer-date-label">📅 ${displayDate}</div>
+        <div class="transfer-date-label">📅 ${esc(displayDate)}</div>
         ${items}
       </div>`;
     });
@@ -4513,8 +4524,11 @@ const months = () =>
 //  AUTHENTICATION & SECURITY
 // ════════════════════════════════════════════════════
 const ADMIN_USER = "admin";
-const ADMIN_DEFAULT_PASSWORD = "admin";
-let ADMIN_HASH = hash(ADMIN_DEFAULT_PASSWORD); // Will be updated when password changes
+// SHA-256 of the default password ("admin"). Anyone still on the default
+// gets a warning at login/startup — see warnIfDefaultPassword().
+const ADMIN_DEFAULT_SHA256 =
+  "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+let ADMIN_HASH = ADMIN_DEFAULT_SHA256; // Will be updated when password changes
 let isLoggedIn = false;
 let currentUser = null;
 
@@ -4544,7 +4558,7 @@ function validateInput(input, type = "text") {
     return /^[a-zA-Z0-9_]{3,20}$/.test(clean);
   }
   if (type === "password") {
-    return clean.length >= 4 && clean.length <= 50;
+    return clean.length >= 8 && clean.length <= 50;
   }
 
   return clean.length > 0 && clean.length <= 100;
@@ -4714,6 +4728,15 @@ function updateLoginUI() {
   }
 }
 
+function warnIfDefaultPassword() {
+  if (isLoggedIn && currentUser === ADMIN_USER && ADMIN_HASH === ADMIN_DEFAULT_SHA256) {
+    showError(
+      "You are using the default admin password. Change it now in Settings → Admin Password.",
+      "warning",
+    );
+  }
+}
+
 function checkLoginStatus() {
   const savedLogin = localStorage.getItem("isLoggedIn");
   const savedUser = localStorage.getItem("currentUser");
@@ -4754,8 +4777,8 @@ async function changeAdminPassword() {
     return;
   }
 
-  if (newPass.length < 4) {
-    showError("New password must be at least 4 characters");
+  if (newPass.length < 8) {
+    showError("New password must be at least 8 characters");
     return;
   }
 
@@ -4840,6 +4863,11 @@ async function addUser() {
   const err = document.getElementById("s-err");
   if (!u || !p) {
     err.textContent = "Both fields required.";
+    err.style.display = "block";
+    return;
+  }
+  if (p.length < 8) {
+    err.textContent = "Password must be at least 8 characters.";
     err.style.display = "block";
     return;
   }
@@ -4942,10 +4970,11 @@ function showError(message, type = "error") {
   errorDiv.innerHTML = `
                 <div class="error-content">
                   <span class="error-icon">${type === "error" ? "⚠️" : "ℹ️"}</span>
-                  <span class="error-message">${message}</span>
+                  <span class="error-message"></span>
                   <button class="error-close" onclick="this.parentElement.parentElement.remove()">✕</button>
                 </div>
               `;
+  errorDiv.querySelector(".error-message").textContent = message;
 
   // Add styles for error notification
   if (!document.querySelector("#error-styles")) {
@@ -5096,7 +5125,7 @@ function editRotNo(td, key, ri) {
   if (td.querySelector("input")) return;
   requireLogin(() => {
     const saved = DB[key][ri].rn || "";
-    td.innerHTML = `<input class="rot-edit" type="text" maxlength="30" value="${saved}" placeholder="Enter Rot No">`;
+    td.innerHTML = `<input class="rot-edit" type="text" maxlength="30" value="${esc(saved)}" placeholder="Enter Rot No">`;
     const inp = td.querySelector("input");
     inp.focus();
     inp.select();
@@ -5104,13 +5133,13 @@ function editRotNo(td, key, ri) {
       const val = inp.value.trim().slice(0, 30);
       DB[key][ri].rn = val;
       setDirty(true);
-      td.innerHTML = val ? `<span class="rn-text">${val}</span>` : '<span class="rn-dash">—</span>';
+      td.innerHTML = val ? `<span class="rn-text">${esc(val)}</span>` : '<span class="rn-dash">—</span>';
     };
     inp.addEventListener("blur", commit);
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") inp.blur();
       if (e.key === "Escape") {
-        td.innerHTML = saved ? `<span class="rn-text">${saved}</span>` : '<span class="rn-dash">—</span>';
+        td.innerHTML = saved ? `<span class="rn-text">${esc(saved)}</span>` : '<span class="rn-dash">—</span>';
       }
     });
   });
@@ -5180,7 +5209,7 @@ function renderSettings() {
         .sort()
         .map(
           (d) =>
-            `<span class="htag">${d} <span style="cursor:pointer;color:#b91c1c" onclick="sett.hols=sett.hols.filter(x=>x!=='${d}');setDirty(true);renderSettings();renderTable();">✕</span></span>`,
+            `<span class="htag">${esc(d)} <span style="cursor:pointer;color:#b91c1c" data-d="${esc(d)}" onclick="sett.hols=sett.hols.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">✕</span></span>`,
         )
         .join("")
     : '<span style="color:#aaa;font-size:10px">None</span>';
@@ -5190,7 +5219,7 @@ function renderSettings() {
         .sort()
         .map(
           (d) =>
-            `<span class="htag htag-g">${d} <span style="cursor:pointer;color:#166534" onclick="sett.excs=sett.excs.filter(x=>x!=='${d}');setDirty(true);renderSettings();renderTable();">✕</span></span>`,
+            `<span class="htag htag-g">${esc(d)} <span style="cursor:pointer;color:#166534" data-d="${esc(d)}" onclick="sett.excs=sett.excs.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">✕</span></span>`,
         )
         .join("")
     : '<span style="color:#aaa;font-size:10px">None</span>';
@@ -5205,8 +5234,8 @@ function renderSettings() {
       (
         x,
       ) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:11px">
-          <span><b>${x.u}</b> <span style="color:#888;font-size:9px">${x.role}</span></span>
-          ${x.role !== "Admin (master)" ? `<span style="cursor:pointer;color:#b91c1c;font-size:10px" onclick="delUser('${x.u}')">Remove</span>` : ""}
+          <span><b>${esc(x.u)}</b> <span style="color:#888;font-size:9px">${x.role}</span></span>
+          ${x.role !== "Admin (master)" ? `<span style="cursor:pointer;color:#b91c1c;font-size:10px" data-u="${esc(x.u)}" onclick="delUser(this.dataset.u)">Remove</span>` : ""}
         </div>`,
     )
     .join("");
@@ -5558,7 +5587,7 @@ function renderTable() {
     tr += `<td class="tcb gsp">${closing}</td>`;
     tr += `<td class="timp gsp">${tImp || "—"}</td>`;
     const rnVal = row.rn || "";
-    tr += `<td class="trn gsp" title="Click to edit" onclick="editRotNo(this,'${cur}',${ri})">${rnVal ? `<span class="rn-text">${rnVal}</span>` : '<span class="rn-dash">—</span>'}</td>`;
+    tr += `<td class="trn gsp" title="Click to edit" onclick="editRotNo(this,'${cur}',${ri})">${rnVal ? `<span class="rn-text">${esc(rnVal)}</span>` : '<span class="rn-dash">—</span>'}</td>`;
     tr += "</tr>";
     body += tr;
   });
@@ -6831,7 +6860,7 @@ function rptDailyLog() {
       <td style="font-weight:700;color:#2563eb">${tDel || "—"}</td>
       <td style="font-weight:700;color:#dc2626">${tRec || "—"}</td>
       <td style="font-weight:700;color:#059669">${fmt(closing)}</td>
-      <td style="font-size:10px;color:#6b7280;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.al || ""}</td>
+      <td style="font-size:10px;color:#6b7280;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.al || "")}</td>
     </tr>`;
   });
 
@@ -7091,12 +7120,12 @@ function rptTransfers() {
       const fromLoc = (t.from != null && LOCS[t.from]) ? LOCS[t.from] : (t.from || "—");
       const toLoc = (t.to != null && LOCS[t.to]) ? LOCS[t.to] : (t.to || "—");
       html += `<tr>
-        <td style="font-weight:700">${date}</td>
-        <td style="color:#dc2626;font-weight:600">${fromLoc}</td>
+        <td style="font-weight:700">${esc(date)}</td>
+        <td style="color:#dc2626;font-weight:600">${esc(fromLoc)}</td>
         <td style="color:#6b7280">→</td>
-        <td style="color:#16a34a;font-weight:600">${toLoc}</td>
+        <td style="color:#16a34a;font-weight:600">${esc(toLoc)}</td>
         <td style="font-weight:700;color:#7c3aed;font-size:14px">${fmt(t.qty || 0)}</td>
-        <td style="color:#6b7280;font-size:11px">${t.note || ""}</td>
+        <td style="color:#6b7280;font-size:11px">${esc(t.note || "")}</td>
       </tr>`;
     });
   });
@@ -7452,7 +7481,7 @@ function renderAuctionReport() {
         <div class="auc-loc-row">
           <div class="auc-loc-rank ${i === 0 ? "top" : ""}">${i + 1}</div>
           <div class="auc-loc-name-cell">
-            <span class="auc-loc-name">${loc}</span>
+            <span class="auc-loc-name">${esc(loc)}</span>
             <div class="auc-loc-bar-track">
               <div class="auc-loc-bar-fill" style="width:${barW}%"></div>
             </div>
@@ -7529,7 +7558,7 @@ function renderAuctionReport() {
             <span class="auc-day-tag ${isWeekend ? "is-weekend" : ""}">${dayName}</span>
           </div>
         </td>
-        <td><span class="auc-loc-chip ${hasLoc ? "active" : ""}">${r.al || "—"}</span></td>
+        <td><span class="auc-loc-chip ${hasLoc ? "active" : ""}">${esc(r.al) || "—"}</span></td>
         <td style="text-align:right">
           ${aucV > 0 ? `<span class="auc-auc-val">${fmt(aucV)}</span>` : `<span class="auc-auc-nil">—</span>`}
         </td>
@@ -8083,6 +8112,7 @@ function init() {
     if (isLoggedIn) {
       showSuccess("Welcome back! You are logged in.");
     }
+    warnIfDefaultPassword();
 
     // Show welcome message for first-time users
     if (!localStorage.getItem("car-balance-visited")) {
