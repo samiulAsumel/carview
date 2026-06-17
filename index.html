@@ -848,12 +848,26 @@
                 margin-bottom: 12px;
               "
             >
-              <input
-                type="date"
-                id="hol-date"
-                class="mf"
-                style="flex: 1; max-width: 200px"
-              />
+              <span class="dmy-wrap" style="flex: 1; max-width: 200px">
+                <input
+                  type="text"
+                  id="hol-date"
+                  class="mf dmy-text"
+                  placeholder="dd/mm/yyyy"
+                  inputmode="numeric"
+                  maxlength="10"
+                  autocomplete="off"
+                  oninput="dmyMask(this)"
+                />
+                <input
+                  type="date"
+                  class="dmy-native"
+                  aria-label="Pick date"
+                  tabindex="-1"
+                  onclick="try{this.showPicker()}catch(e){}"
+                  onchange="dmyPick(this,'hol-date')"
+                />
+              </span>
               <button class="btn pri" onclick="addHol()">+ Add</button>
             </div>
             <div
@@ -882,12 +896,26 @@
                 margin-bottom: 12px;
               "
             >
-              <input
-                type="date"
-                id="exc-date"
-                class="mf"
-                style="flex: 1; max-width: 200px"
-              />
+              <span class="dmy-wrap" style="flex: 1; max-width: 200px">
+                <input
+                  type="text"
+                  id="exc-date"
+                  class="mf dmy-text"
+                  placeholder="dd/mm/yyyy"
+                  inputmode="numeric"
+                  maxlength="10"
+                  autocomplete="off"
+                  oninput="dmyMask(this)"
+                />
+                <input
+                  type="date"
+                  class="dmy-native"
+                  aria-label="Pick date"
+                  tabindex="-1"
+                  onclick="try{this.showPicker()}catch(e){}"
+                  onchange="dmyPick(this,'exc-date')"
+                />
+              </span>
               <button
                 class="btn"
                 style="border-color: #dc2626; color: #dc2626"

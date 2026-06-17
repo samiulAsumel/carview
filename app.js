@@ -3548,6 +3548,38 @@ const fmtDMY = (s) => {
   const [y, m, d] = String(s).split("-");
   return d && m && y ? `${d}-${m}-${y}` : s;
 };
+
+// Manual date entry fields use dd/mm/yyyy (slashes) for display while the value
+// is stored as yyyy-mm-dd. These helpers convert between the two and auto-insert
+// slashes as the user types.
+const isoToDMY = (s) => {
+  if (!s) return "";
+  const [y, m, d] = String(s).split("-");
+  return d && m && y ? `${d}/${m}/${y}` : "";
+};
+function dmyToISO(s) {
+  if (!s) return "";
+  s = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already ISO
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return "";
+  const d = m[1].padStart(2, "0"),
+    mo = m[2].padStart(2, "0"),
+    y = m[3];
+  if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return "";
+  return `${y}-${mo}-${d}`;
+}
+function dmyMask(el) {
+  let v = el.value.replace(/\D/g, "").slice(0, 8);
+  if (v.length >= 5) v = v.slice(0, 2) + "/" + v.slice(2, 4) + "/" + v.slice(4);
+  else if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+  el.value = v;
+}
+// Calendar-icon picker fills the paired text field with dd/mm/yyyy.
+function dmyPick(nativeEl, textId) {
+  const t = document.getElementById(textId);
+  if (t) t.value = isoToDMY(nativeEl.value);
+}
 const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "—");
 const pct = (a, b) => (b ? Math.round(((a - b) / b) * 100) : null);
 // Escape untrusted data before inserting into HTML (data may come from
@@ -4620,7 +4652,14 @@ function renderTransferPage() {
       <div class="transfer-form-grid">
         <div class="transfer-field">
           <label>📅 Transfer Date</label>
-          <input type="date" id="tr-date" value="${todayVal}" />
+          <span class="dmy-wrap">
+            <input type="text" id="tr-date" class="dmy-text" placeholder="dd/mm/yyyy"
+                   inputmode="numeric" maxlength="10" autocomplete="off"
+                   oninput="dmyMask(this)" value="${isoToDMY(todayVal)}" />
+            <input type="date" class="dmy-native" aria-label="Pick date" tabindex="-1"
+                   value="${todayVal}" onclick="try{this.showPicker()}catch(e){}"
+                   onchange="dmyPick(this,'tr-date')" />
+          </span>
         </div>
         <div class="transfer-field">
           <label>🔢 Number of Cars</label>
@@ -4750,7 +4789,7 @@ function renderTransferPreview() {
  * Reads the transfer form inputs and calls addCarTransfer().
  */
 function submitTransferForm() {
-  const date = (document.getElementById("tr-date")?.value || "").trim();
+  const date = dmyToISO(document.getElementById("tr-date")?.value || "");
   const fromIdx = document.getElementById("tr-from")?.value;
   const toIdx = document.getElementById("tr-to")?.value;
   const qty = document.getElementById("tr-qty")?.value;
@@ -5489,19 +5528,29 @@ function saveSett() {
   renderSumCards();
 }
 function addHol() {
-  const d = document.getElementById("hol-date").value;
-  if (!d) return;
+  const el = document.getElementById("hol-date");
+  const d = dmyToISO(el.value);
+  if (!d) {
+    alert("Date din dd/mm/yyyy format e (e.g. 01/05/2026).");
+    return;
+  }
   if (!sett.hols.includes(d)) sett.hols.push(d);
   sett.excs = sett.excs.filter((x) => x !== d);
+  el.value = "";
   setDirty(true);
   renderSettings();
   renderTable();
 }
 function addExc() {
-  const d = document.getElementById("exc-date").value;
-  if (!d) return;
+  const el = document.getElementById("exc-date");
+  const d = dmyToISO(el.value);
+  if (!d) {
+    alert("Date din dd/mm/yyyy format e (e.g. 01/05/2026).");
+    return;
+  }
   if (!sett.excs.includes(d)) sett.excs.push(d);
   sett.hols = sett.hols.filter((x) => x !== d);
+  el.value = "";
   setDirty(true);
   renderSettings();
   renderTable();

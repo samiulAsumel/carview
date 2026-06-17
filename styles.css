@@ -4010,3 +4010,38 @@ input.ci.auc {
     transition: none !important;
   }
 }
+
+/* dd/mm/yyyy date fields: text input + transparent native picker overlay
+   so the value displays as dd/mm/yyyy regardless of browser locale while a
+   calendar icon still opens the native date picker. */
+.dmy-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.dmy-wrap .dmy-text {
+  width: 100%;
+  padding-right: 30px;
+}
+.dmy-wrap .dmy-native {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 34px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+.dmy-wrap::after {
+  content: "📅";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  pointer-events: none;
+}
