@@ -3735,7 +3735,14 @@ function loadFromFirebase(callback) {
       if (data && (data.db || data.adminHash)) {
         if (data.db) {
           Object.keys(data.db).forEach((k) => {
-            DB[k] = data.db[k];
+            const m = data.db[k];
+            // Firebase stored arrays as numeric-keyed objects; coerce back to
+            // an array so the rest of the app (which expects arrays) works.
+            DB[k] = Array.isArray(m)
+              ? m
+              : Object.keys(m)
+                  .sort((a, b) => Number(a) - Number(b))
+                  .map((i) => m[i]);
           });
         }
         if (data.sett) Object.assign(sett, data.sett);

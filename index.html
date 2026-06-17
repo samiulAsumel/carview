@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://carview-proxy.sa-sumel91.workers.dev; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.googleapis.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
@@ -897,7 +897,7 @@
 
         <!-- Cloud Sync -->
         <div class="rpt-sec">
-          <div class="rpt-hdr">☁️ Cloud Sync (GitHub)</div>
+          <div class="rpt-hdr">☁️ Cloud Sync (Firebase)</div>
           <div style="padding: 15px">
             <div style="font-size: 12px; color: #666; margin-bottom: 10px">
               Data syncs automatically to cloud. All devices will see the same
@@ -917,28 +917,6 @@
             >
               ☁️ Connected
             </div>
-            <div
-              id="cloud-last-saved"
-              style="
-                font-size: 12px;
-                color: #475569;
-                text-align: center;
-                margin-top: 8px;
-              "
-            >
-              Last saved: —
-            </div>
-            <button
-              class="btn"
-              onclick="showCloudHistory()"
-              style="width: 100%; margin-top: 10px"
-            >
-              📜 Version History
-            </button>
-            <div
-              id="cloud-history-list"
-              style="margin-top: 10px; max-height: 240px; overflow-y: auto"
-            ></div>
           </div>
         </div>
 
@@ -976,7 +954,7 @@
             © 2026 samiulAsumel. All rights reserved.
           </div>
           <div style="font-size: 10px; color: #666; margin-top: 6px">
-            Daily Car Balance Tracker | Powered by GitHub
+            Daily Car Balance Tracker | Powered by Firebase
           </div>
         </div>
       </div>
