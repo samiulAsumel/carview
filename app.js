@@ -3483,29 +3483,30 @@ const GRP_SEC = [
 //  use request.auth.uid in rules. Rate limiting and validation should
 //  also be added via Firebase App Check.
 //
-const firebaseConfig = {
-  databaseURL:
-    "https://monthly-car-balance-default-rtdb.asia-southeast1.firebasedatabase.app/",
+// Cloud storage is a private GitHub repo (samiulAsumel/carview-data),
+// accessed only through a Cloudflare Worker proxy. The Worker holds the
+// GitHub token server-side, so no secret is ever exposed in the browser.
+//   READ  (GET workerUrl): returns data.json (works for everyone, viewers too)
+//   WRITE (PUT workerUrl): commits data.json; requires the write key below
+const GITHUB_CONFIG = {
+  workerUrl: "https://carview-proxy.sa-sumel91.workers.dev",
 };
 
-let firebaseDb = null;
+// Kept as a truthy flag so existing cloud-sync code paths that check
+// `if (firebaseDb)` keep working unchanged after the migration.
+const firebaseDb = true;
 
-// Initialize Firebase with error protection
-try {
-  if (typeof firebase !== "undefined" && firebase.apps) {
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-    firebaseDb = firebase.database();
-  } else {
-    console.warn("Firebase SDK not loaded, app will use localStorage only");
-    firebaseDb = null;
-  }
-} catch (firebaseError) {
-  console.error("Firebase initialization failed:", firebaseError);
-  console.warn("Falling back to localStorage only");
-  firebaseDb = null;
+// Write authorization, derived from the admin password at login time and
+// kept in localStorage so any logged-in device can save. The Worker checks
+// it before writing, so only password-holders can change the data.
+let writeAuth = localStorage.getItem("writeAuth") || null;
+async function computeWriteAuth(password) {
+  return await sha256("carview-write:" + password);
 }
+
+// SHA of the data.json version this device last loaded. Sent on save so the
+// Worker can reject a write that would clobber a newer version saved elsewhere.
+let cloudBaseSha = null;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  STATE
@@ -3722,18 +3723,16 @@ function loadLS() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function loadFromFirebase(callback) {
-  if (!firebaseDb) {
-    loadLS();
-    if (callback) callback();
-    return;
-  }
-
-  firebaseDb
-    .ref("carBalance")
-    .once("value")
-    .then((snapshot) => {
-      const data = snapshot.val();
-      if (data) {
+  // Read from the Worker (which reads the private repo). Cache-bust so we
+  // always get the latest committed data.
+  fetch(GITHUB_CONFIG.workerUrl + "?t=" + Date.now())
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      cloudBaseSha = r.headers.get("X-Data-Sha") || null;
+      return r.json();
+    })
+    .then((data) => {
+      if (data && (data.db || data.adminHash)) {
         if (data.db) {
           Object.keys(data.db).forEach((k) => {
             DB[k] = data.db[k];
@@ -3751,6 +3750,7 @@ function loadFromFirebase(callback) {
       if (callback) callback();
     })
     .catch((e) => {
+      console.warn("Cloud load failed, using local data:", e);
       loadLS();
       if (callback) callback();
     });
@@ -3767,15 +3767,145 @@ function saveToFirebase() {
     adminHash: ADMIN_HASH,
   };
 
-  return firebaseDb
-    .ref("carBalance")
-    .set(dataToSave)
-    .then(() => {
-      return true;
+  // Send to the Worker, which fetches the current SHA and commits to the
+  // private repo. The write key proves we know the admin password.
+  return fetch(GITHUB_CONFIG.workerUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Write-Key": writeAuth || "",
+    },
+    body: JSON.stringify({
+      message: "Update data " + new Date().toISOString(),
+      data: dataToSave,
+      baseSha: cloudBaseSha, // overwrite protection
+    }),
+  })
+    .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))
+    .then(({ ok, status, j }) => {
+      if (status === 409) {
+        // Another device saved newer data; don't clobber it.
+        showError(
+          "Cloud-e onno device theke notun data ache. Page reload kore abar Save korun (na hole purono data overwrite hobe).",
+          "warning",
+        );
+        return false;
+      }
+      if (ok && j.content && j.content.sha) {
+        cloudBaseSha = j.content.sha; // advance to the version we just wrote
+      }
+      return ok && (j.commit || j.content) ? true : false;
     })
     .catch((e) => {
+      console.error("Cloud save failed:", e);
       return false;
     });
+}
+
+// ── Cloud history / restore (powered by GitHub commit history) ─────────────
+
+function fmtCloudDate(iso) {
+  try {
+    return new Date(iso).toLocaleString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: sett.tz,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+// Update the "Last saved" label and (optionally) render the version list.
+function loadCloudHistory(renderList) {
+  const listEl = document.getElementById("cloud-history-list");
+  const lastEl = document.getElementById("cloud-last-saved");
+  if (renderList && listEl) listEl.innerHTML = "Loading…";
+
+  return fetch(GITHUB_CONFIG.workerUrl + "?history=1&t=" + Date.now())
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then((commits) => {
+      if (lastEl && commits.length) {
+        lastEl.textContent = "Last saved: " + fmtCloudDate(commits[0].date);
+      }
+      if (renderList && listEl) {
+        if (!commits.length) {
+          listEl.innerHTML =
+            '<div style="color:#666;font-size:12px">No history yet.</div>';
+          return;
+        }
+        listEl.innerHTML = commits
+          .map((c, i) => {
+            const label = i === 0 ? " (current)" : "";
+            const btn =
+              i === 0
+                ? ""
+                : `<button class="btn" style="padding:4px 10px;font-size:11px" onclick="restoreVersion('${esc(
+                    c.sha,
+                  )}')">Restore</button>`;
+            return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #eee;font-size:12px">
+                <span>${esc(fmtCloudDate(c.date))}${label}</span>${btn}
+              </div>`;
+          })
+          .join("");
+      }
+    })
+    .catch((e) => {
+      console.warn("History load failed:", e);
+      if (renderList && listEl)
+        listEl.innerHTML =
+          '<div style="color:#dc2626;font-size:12px">History load failed.</div>';
+    });
+}
+
+function showCloudHistory() {
+  loadCloudHistory(true);
+}
+
+// Restore an older version: load it, then save it as a new commit on top
+// (nothing is ever destroyed — the old commit stays in history).
+async function restoreVersion(sha) {
+  if (!isLoggedIn) {
+    showError("Please login first");
+    return;
+  }
+  if (
+    !confirm(
+      "Ei purono version-ta restore korben? Eta ekhonkar data replace korbe (kintu history-te sob theke jabe).",
+    )
+  )
+    return;
+  try {
+    const r = await fetch(
+      GITHUB_CONFIG.workerUrl + "?at=" + encodeURIComponent(sha),
+    );
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    DB = {};
+    if (data.db) Object.keys(data.db).forEach((k) => (DB[k] = data.db[k]));
+    if (data.sett) Object.assign(sett, data.sett);
+    if (data.users) users = data.users;
+    if (data.adminHash) ADMIN_HASH = data.adminHash;
+    buildHist();
+    renderAll();
+    const ok = await saveToFirebase();
+    if (ok) {
+      showSuccess("✓ Restored to selected version!");
+      saveLS();
+      loadCloudHistory(true);
+    } else {
+      showError("Restore loaded locally but cloud save failed", "warning");
+    }
+  } catch (e) {
+    console.error("Restore failed:", e);
+    showError("Restore failed: " + e.message);
+  }
 }
 
 function saveLS() {
@@ -4680,6 +4810,11 @@ async function doLoginSimple(userid, password) {
     isLoggedIn = true;
     currentUser = userid;
 
+    // Derive and store the cloud write key from the password so this device
+    // can save without entering anything extra.
+    writeAuth = await computeWriteAuth(password);
+    localStorage.setItem("writeAuth", writeAuth);
+
     const sessionToken = crypto.randomUUID
       ? crypto.randomUUID()
       : "sess_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
@@ -4707,6 +4842,8 @@ function logout() {
   localStorage.removeItem("currentUser");
   localStorage.removeItem("loginTime");
   localStorage.removeItem("sessionToken");
+  localStorage.removeItem("writeAuth");
+  writeAuth = null;
   showSuccess("Logged out successfully");
   renderAll();
 }
@@ -4790,15 +4927,21 @@ async function changeAdminPassword() {
   ADMIN_HASH = await sha256(newPass);
   localStorage.setItem("adminHash", ADMIN_HASH);
 
+  // Rotate the cloud write key to the new password and push the change.
+  // NOTE: also update the Worker's WRITE_PASSWORD secret to the new password,
+  // otherwise future saves will be rejected.
+  writeAuth = await computeWriteAuth(newPass);
+  localStorage.setItem("writeAuth", writeAuth);
+
   if (firebaseDb && isLoggedIn) {
-    firebaseDb
-      .ref("carBalance/adminHash")
-      .set(ADMIN_HASH)
-      .then(() => {
-      })
-      .catch((e) => {
-        showError("Password changed but cloud sync failed", "warning");
-      });
+    saveToFirebase().then((ok) => {
+      if (!ok) {
+        showError(
+          "Password changed locally. Update the Worker WRITE_PASSWORD secret to the new password to re-enable cloud save.",
+          "warning",
+        );
+      }
+    });
   }
 
   document.getElementById("current-password").value = "";
@@ -8075,10 +8218,11 @@ function init() {
       // Show connected status
       if (firebaseDb) {
         document.getElementById("gs-status").innerHTML =
-          '<span style="color:#059669">✅ Connected to cloud</span>';
-        firebaseDb.ref(".info/connected").on("value", (snap) => {
-          const el = document.getElementById("conn-status");
-          if (snap.val() === true) {
+          '<span style="color:#059669">✅ Connected to cloud (GitHub)</span>';
+        loadCloudHistory(false); // populate "Last saved" label
+        const el = document.getElementById("conn-status");
+        const setConn = (online) => {
+          if (online) {
             el.textContent = "Online";
             el.style.color = "#4ade80";
             el.style.borderColor = "rgba(74,222,128,0.3)";
@@ -8087,7 +8231,10 @@ function init() {
             el.style.color = "#f87171";
             el.style.borderColor = "rgba(248,113,113,0.3)";
           }
-        });
+        };
+        setConn(navigator.onLine);
+        window.addEventListener("online", () => setConn(true));
+        window.addEventListener("offline", () => setConn(false));
       } else {
         const el = document.getElementById("conn-status");
         el.textContent = "Local only";
