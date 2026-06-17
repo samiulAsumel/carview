@@ -3574,6 +3574,112 @@ function isRed(s) {
   return sett.hols.includes(s);
 }
 
+// ════════════════════════════════════════════════════
+// BANGLADESH GOVERNMENT HOLIDAY CALENDAR
+// General + optional/executive holidays per the official Ministry of Public
+// Administration (MoPA) gazette. Friday & Saturday are the weekly holidays and
+// are handled separately by the Fri/Sat toggles above — they are NOT repeated
+// here.
+//
+// ⚠ Islamic holidays (Eid, Shab-e-Barat, Ashura, Milad-un-Nabi, etc.) depend on
+//   moon sighting and the National Moon Sighting Committee can shift them ±1 day
+//   from these gazetted/predicted dates. After loading a year, verify against the
+//   official gazette and fine-tune with "Add Custom Red Date" / "Remove Red from
+//   Date" below.
+//
+// To add a FUTURE year: copy a year block, change the key and the dates. Each
+// entry is { d:"YYYY-MM-DD", n:"name", t:"general" | "optional" }.
+const BD_HOLIDAYS = {
+  "2025": [
+    { d: "2025-02-15", n: "Shab-e-Barat", t: "optional" },
+    { d: "2025-02-21", n: "Shaheed Dibosh & Int'l Mother Language Day", t: "general" },
+    { d: "2025-03-27", n: "Laylatul Qadr", t: "optional" },
+    { d: "2025-03-28", n: "Jumatul Bidah", t: "optional" },
+    { d: "2025-03-29", n: "Eid-ul-Fitr holiday", t: "general" },
+    { d: "2025-03-30", n: "Eid-ul-Fitr holiday", t: "general" },
+    { d: "2025-03-31", n: "Eid-ul-Fitr", t: "general" },
+    { d: "2025-04-01", n: "Eid-ul-Fitr holiday", t: "general" },
+    { d: "2025-04-02", n: "Eid-ul-Fitr holiday (executive)", t: "optional" },
+    { d: "2025-04-14", n: "Pohela Boishakh (Bengali New Year)", t: "general" },
+    { d: "2025-05-01", n: "May Day", t: "general" },
+    { d: "2025-05-11", n: "Buddha Purnima", t: "general" },
+    { d: "2025-06-05", n: "Eid-ul-Adha holiday", t: "general" },
+    { d: "2025-06-06", n: "Eid-ul-Adha holiday", t: "general" },
+    { d: "2025-06-07", n: "Eid-ul-Adha", t: "general" },
+    { d: "2025-06-08", n: "Eid-ul-Adha holiday", t: "general" },
+    { d: "2025-06-09", n: "Eid-ul-Adha holiday (executive)", t: "optional" },
+    { d: "2025-06-10", n: "Eid-ul-Adha holiday (executive)", t: "optional" },
+    { d: "2025-07-06", n: "Ashura", t: "general" },
+    { d: "2025-08-16", n: "Janmashtami", t: "general" },
+    { d: "2025-09-05", n: "Eid-e-Milad-un-Nabi", t: "general" },
+    { d: "2025-10-01", n: "Durga Puja holiday", t: "optional" },
+    { d: "2025-10-02", n: "Vijaya Dashami (Durga Puja)", t: "general" },
+    { d: "2025-12-16", n: "Victory Day", t: "general" },
+    { d: "2025-12-25", n: "Christmas Day", t: "general" },
+  ],
+  "2026": [
+    { d: "2026-02-04", n: "Shab-e-Barat", t: "optional" },
+    { d: "2026-02-21", n: "Shaheed Dibosh & Int'l Mother Language Day", t: "general" },
+    { d: "2026-03-17", n: "Shab-e-Qadr", t: "optional" },
+    { d: "2026-03-20", n: "Jumatul Wida", t: "optional" },
+    { d: "2026-03-21", n: "Eid-ul-Fitr", t: "general" },
+    { d: "2026-03-22", n: "Eid-ul-Fitr holiday", t: "general" },
+    { d: "2026-03-23", n: "Eid-ul-Fitr holiday", t: "general" },
+    { d: "2026-03-26", n: "Independence Day", t: "general" },
+    { d: "2026-04-14", n: "Pohela Boishakh (Bengali New Year)", t: "general" },
+    { d: "2026-05-01", n: "May Day & Buddha Purnima", t: "general" },
+    { d: "2026-05-25", n: "Eid-ul-Adha holiday", t: "optional" },
+    { d: "2026-05-26", n: "Eid-ul-Adha holiday", t: "general" },
+    { d: "2026-05-27", n: "Eid-ul-Adha", t: "general" },
+    { d: "2026-05-28", n: "Eid-ul-Adha holiday", t: "general" },
+    { d: "2026-05-29", n: "Eid-ul-Adha holiday (executive)", t: "optional" },
+    { d: "2026-05-30", n: "Eid-ul-Adha holiday (executive)", t: "optional" },
+    { d: "2026-05-31", n: "Eid-ul-Adha holiday (executive)", t: "optional" },
+    { d: "2026-06-26", n: "Ashura", t: "general" },
+    { d: "2026-08-05", n: "July Mass Uprising Day", t: "general" },
+    { d: "2026-08-26", n: "Eid-e-Milad-un-Nabi", t: "general" },
+    { d: "2026-09-04", n: "Janmashtami", t: "general" },
+    { d: "2026-10-20", n: "Durga Puja holiday", t: "optional" },
+    { d: "2026-10-21", n: "Vijaya Dashami (Durga Puja)", t: "general" },
+    { d: "2026-12-16", n: "Victory Day", t: "general" },
+    { d: "2026-12-25", n: "Christmas Day", t: "general" },
+  ],
+};
+
+// Merge a bundled year's Bangladesh holidays into the custom red-date list.
+// includeOptional=false loads only mandatory "general" holidays.
+function loadBDHolidays() {
+  const sel = document.getElementById("bd-hol-year");
+  const yr = sel ? sel.value : "";
+  const incOpt = document.getElementById("bd-hol-opt");
+  const includeOptional = incOpt ? incOpt.checked : true;
+  const list = BD_HOLIDAYS[yr] || [];
+  if (!list.length) {
+    alert("No bundled Bangladesh holidays for " + yr + ".");
+    return;
+  }
+  let added = 0,
+    skipped = 0;
+  list.forEach((h) => {
+    if (!includeOptional && h.t !== "general") return;
+    sett.excs = sett.excs.filter((x) => x !== h.d);
+    if (sett.hols.includes(h.d)) {
+      skipped++;
+    } else {
+      sett.hols.push(h.d);
+      added++;
+    }
+  });
+  setDirty(true);
+  renderSettings();
+  renderTable();
+  alert(
+    `Bangladesh ${yr} holidays loaded.\n` +
+      `${added} date(s) added, ${skipped} already present.\n\n` +
+      `Note: moon-dependent Eid/Islamic dates are predictions — verify with the official gazette and adjust below if needed.`,
+  );
+}
+
 function pBadge(a, b, goodUp = true) {
   const p = pct(a, b);
   if (p === null) return "";
@@ -5375,6 +5481,16 @@ function renderSettings() {
   document.getElementById("cb-fri").checked = sett.fri;
   document.getElementById("cb-sat").checked = sett.sat;
   document.getElementById("cb-sun").checked = sett.sun;
+  // Populate the Bangladesh holiday year dropdown from the bundled calendar,
+  // defaulting to the current year if available.
+  const bdSel = document.getElementById("bd-hol-year");
+  if (bdSel) {
+    const years = Object.keys(BD_HOLIDAYS).sort();
+    const cur = String(new Date().getFullYear());
+    bdSel.innerHTML = years
+      .map((y) => `<option value="${y}"${y === cur ? " selected" : ""}>${y}</option>`)
+      .join("");
+  }
   const hl = document.getElementById("hol-list");
   hl.innerHTML = sett.hols.length
     ? sett.hols

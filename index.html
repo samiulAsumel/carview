@@ -789,6 +789,53 @@
           </div>
         </div>
 
+        <!-- Bangladesh Govt Holiday Calendar -->
+        <div class="rpt-sec">
+          <div class="rpt-hdr">🇧🇩 Bangladesh Govt Holiday Calendar</div>
+          <div style="padding: 15px">
+            <div
+              style="
+                display: flex;
+                gap: 10px;
+                align-items: center;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+              "
+            >
+              <select id="bd-hol-year" class="mf" style="max-width: 120px"></select>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  font-size: 12px;
+                  cursor: pointer;
+                  padding: 6px 12px;
+                  background: #f3f4f6;
+                  border-radius: 6px;
+                "
+              >
+                <input
+                  type="checkbox"
+                  id="bd-hol-opt"
+                  checked
+                  style="width: 16px; height: 16px"
+                />
+                Include optional holidays
+              </label>
+              <button class="btn pri" onclick="loadBDHolidays()">
+                Load holidays
+              </button>
+            </div>
+            <div style="font-size: 11px; color: #666; line-height: 1.5">
+              Marks the selected year's government holidays as red. Friday &
+              Saturday weekly holidays are already covered above. Eid &amp; other
+              moon-dependent dates are gazette predictions — verify and adjust
+              with the tools below if the Moon Sighting Committee shifts them.
+            </div>
+          </div>
+        </div>
+
         <!-- Custom Red Dates -->
         <div class="rpt-sec">
           <div class="rpt-hdr">🎯 Add Custom Red Date</div>

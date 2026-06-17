@@ -25,9 +25,21 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 ### Daily Entry
 - 8-location vehicle tracking (Warehouse-A/B, Yard-1/2, Shed-3/4/5/6)
 - Opening/closing balance auto-calculation
-- Holiday/weekend day marking
+- Holiday/weekend day marking (red rows)
+- **Bangladesh Government Holiday Calendar** — one-click load of the official
+  general + optional/executive holidays for a chosen year (2025, 2026, and any
+  future year you add). Friday & Saturday are red by default; gazette holidays
+  are merged on top. Moon-dependent Eid/Islamic dates can be fine-tuned per day.
 - Real-time summary cards and group totals
 - **Rot No column** — inline-editable rotation number per row (up to 30 chars), included in Excel export
+
+#### How red (off) days are decided
+Each date is evaluated in this order:
+1. If it is in the **"Remove Red from Date"** list → always a normal working day (this wins over everything).
+2. Else if it is **Friday/Saturday** (or Sunday) and that weekly-holiday toggle is on → red.
+3. Else if it is in the **holiday list** (manual or loaded from the BD calendar) → red.
+
+To bundle a future year, copy a year block in the `BD_HOLIDAYS` table in `app.js`, change the key and dates — it appears in the Settings dropdown automatically.
 
 ### Analytics Dashboard (Charts)
 - 7 focused charts: daily receive vs delivery, closing balance, month comparison, location performance, balance trend, net flow

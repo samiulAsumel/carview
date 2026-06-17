@@ -1,4 +1,4 @@
-const CACHE_NAME = 'car-balance-v5';
+const CACHE_NAME = 'car-balance-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
