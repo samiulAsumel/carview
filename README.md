@@ -39,7 +39,7 @@ Each date is evaluated in this order:
 2. Else if it is **Friday/Saturday** (or Sunday) and that weekly-holiday toggle is on → red.
 3. Else if it is in the **holiday list** (manual or loaded from the BD calendar) → red.
 
-To bundle a future year, copy a year block in the `BD_HOLIDAYS` table in `app.js`, change the key and dates — it appears in the Settings dropdown automatically.
+**Future years are partly automatic.** The dropdown always lists upcoming years, and **fixed-date national holidays** (Feb 21, Mar 26, Apr 14, May 1, Aug 5, Dec 16, Dec 25) are generated automatically for any year via the `BD_FIXED` table — no edit needed. Only **moon-dependent dates** (Eid, Ashura, Milad-un-Nabi, Puja, Buddha Purnima, etc.) must be bundled, since they have no fixed date and are set yearly by the government gazette. To bundle them for a new year, copy a year block in the `BD_HOLIDAYS` table in `app.js` and change the key and dates — or just add them per-day with "Add Custom Red Date".
 
 ### Analytics Dashboard (Charts)
 - 7 focused charts: daily receive vs delivery, closing balance, month comparison, location performance, balance trend, net flow

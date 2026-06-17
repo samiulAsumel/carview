@@ -3646,21 +3646,38 @@ const BD_HOLIDAYS = {
   ],
 };
 
-// Merge a bundled year's Bangladesh holidays into the custom red-date list.
+// Fixed-date (Gregorian) national holidays — these fall on the SAME calendar
+// date every year, so they are generated automatically for ANY selected year
+// (including future years not yet listed in BD_HOLIDAYS above).
+const BD_FIXED = [
+  { md: "02-21", n: "Shaheed Dibosh & Int'l Mother Language Day" },
+  { md: "03-26", n: "Independence Day" },
+  { md: "04-14", n: "Pohela Boishakh (Bengali New Year)" },
+  { md: "05-01", n: "May Day" },
+  { md: "08-05", n: "July Mass Uprising Day" },
+  { md: "12-16", n: "Victory Day" },
+  { md: "12-25", n: "Christmas Day" },
+];
+
+// Load a year's Bangladesh holidays into the custom red-date list.
+// Fixed national holidays are always generated; moon-dependent (Eid/lunar)
+// holidays are added only when bundled for that year in BD_HOLIDAYS.
 // includeOptional=false loads only mandatory "general" holidays.
 function loadBDHolidays() {
   const sel = document.getElementById("bd-hol-year");
   const yr = sel ? sel.value : "";
+  if (!yr) return;
   const incOpt = document.getElementById("bd-hol-opt");
   const includeOptional = incOpt ? incOpt.checked : true;
-  const list = BD_HOLIDAYS[yr] || [];
-  if (!list.length) {
-    alert("No bundled Bangladesh holidays for " + yr + ".");
-    return;
-  }
+
+  // Fixed national holidays (auto-generated for any year) + bundled variable ones.
+  const fixed = BD_FIXED.map((h) => ({ d: `${yr}-${h.md}`, n: h.n, t: "general" }));
+  const variable = BD_HOLIDAYS[yr] || [];
+  const combined = [...fixed, ...variable];
+
   let added = 0,
     skipped = 0;
-  list.forEach((h) => {
+  combined.forEach((h) => {
     if (!includeOptional && h.t !== "general") return;
     sett.excs = sett.excs.filter((x) => x !== h.d);
     if (sett.hols.includes(h.d)) {
@@ -3676,7 +3693,9 @@ function loadBDHolidays() {
   alert(
     `Bangladesh ${yr} holidays loaded.\n` +
       `${added} date(s) added, ${skipped} already present.\n\n` +
-      `Note: moon-dependent Eid/Islamic dates are predictions — verify with the official gazette and adjust below if needed.`,
+      (variable.length === 0
+        ? `Only fixed national holidays exist for ${yr}. Moon-dependent Eid/Islamic and Puja dates aren't bundled for this year yet — add them with "Add Custom Red Date" below using the official gazette.`
+        : `Note: moon-dependent Eid/Islamic dates are predictions — verify with the official gazette and adjust below if needed.`),
   );
 }
 
@@ -5481,14 +5500,17 @@ function renderSettings() {
   document.getElementById("cb-fri").checked = sett.fri;
   document.getElementById("cb-sat").checked = sett.sat;
   document.getElementById("cb-sun").checked = sett.sun;
-  // Populate the Bangladesh holiday year dropdown from the bundled calendar,
-  // defaulting to the current year if available.
+  // Populate the Bangladesh holiday year dropdown: bundled years plus a rolling
+  // window of future years (which auto-load the fixed national holidays).
   const bdSel = document.getElementById("bd-hol-year");
   if (bdSel) {
-    const years = Object.keys(BD_HOLIDAYS).sort();
-    const cur = String(new Date().getFullYear());
+    const cur = new Date().getFullYear();
+    const yset = new Set(Object.keys(BD_HOLIDAYS).map(Number));
+    for (let y = cur - 1; y <= cur + 5; y++) yset.add(y);
+    const years = [...yset].sort((a, b) => a - b);
+    const keep = bdSel.value || String(cur);
     bdSel.innerHTML = years
-      .map((y) => `<option value="${y}"${y === cur ? " selected" : ""}>${y}</option>`)
+      .map((y) => `<option value="${y}"${String(y) === keep ? " selected" : ""}>${y}</option>`)
       .join("");
   }
   const hl = document.getElementById("hol-list");
