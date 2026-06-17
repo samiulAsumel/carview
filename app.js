@@ -3541,6 +3541,13 @@ let auctionFilter = { from: "", to: "", preset: "all" }; // independent day-leve
 const mk = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
 const dIn = (y, m) => new Date(y, m, 0).getDate();
 const dow = (s) => new Date(s + "T00:00:00").getDay();
+// App-wide display format: turn a stored "YYYY-MM-DD" date into "dd-mm-yyyy".
+// (Storage/lookup keys stay "YYYY-MM-DD" — only the on-screen text changes.)
+const fmtDMY = (s) => {
+  if (!s) return "—";
+  const [y, m, d] = String(s).split("-");
+  return d && m && y ? `${d}-${m}-${y}` : s;
+};
 const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "—");
 const pct = (a, b) => (b ? Math.round(((a - b) / b) * 100) : null);
 // Escape untrusted data before inserting into HTML (data may come from
@@ -3960,14 +3967,17 @@ function saveToFirebase() {
 
 function fmtCloudDate(iso) {
   try {
-    return new Date(iso).toLocaleString("en-GB", {
+    const parts = new Intl.DateTimeFormat("en-GB", {
       day: "2-digit",
-      month: "short",
+      month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
       timeZone: sett.tz,
-    });
+    }).formatToParts(new Date(iso));
+    const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+    return `${p.day}-${p.month}-${p.year} ${p.hour}:${p.minute}`;
   } catch {
     return iso;
   }
@@ -5473,7 +5483,7 @@ function saveSett() {
   // Update today label
   const n = new Date();
   const todayInTz = n.toLocaleDateString("en-CA", { timeZone: sett.tz });
-  document.getElementById("today-lbl").textContent = "Today: " + todayInTz;
+  document.getElementById("today-lbl").textContent = "Today: " + fmtDMY(todayInTz);
 
   renderTable();
   renderSumCards();
@@ -5659,12 +5669,6 @@ function renderSumCards() {
   const avgDel = wDays ? Math.round(s.del / wDays) : 0;
   const avgImp = wDays ? Math.round(s.imp / wDays) : 0;
 
-  const formatDMY = (dateStr) => {
-    if (!dateStr) return "—";
-    const [year, month, day] = dateStr.split("-");
-    return `${day}-${month}-${year}`;
-  };
-
   const formatMonthLabel = (monthKey) => {
     if (!monthKey) return "—";
     const [year, month] = monthKey.split("-").map(Number);
@@ -5688,7 +5692,7 @@ function renderSumCards() {
     ? nonRedBeforeToday[nonRedBeforeToday.length - 1]
     : null;
   const prevWorkDel = totalForRow(prevWorkingRow, "del");
-  const prevWorkDate = prevWorkingRow ? formatDMY(prevWorkingRow.date) : "—";
+  const prevWorkDate = prevWorkingRow ? fmtDMY(prevWorkingRow.date) : "—";
   const currentRow =
     sortedRows.find((r) => r.date === todayDate) ||
     sortedRows[sortedRows.length - 1] ||
@@ -5696,7 +5700,7 @@ function renderSumCards() {
   const prevDayIndex = currentRow ? sortedRows.indexOf(currentRow) - 1 : -1;
   const prevDay = prevDayIndex >= 0 ? sortedRows[prevDayIndex] : null;
   const prevDayReceive = totalForRow(prevDay, "imp");
-  const prevDayDate = prevDay ? formatDMY(prevDay.date) : "—";
+  const prevDayDate = prevDay ? fmtDMY(prevDay.date) : "—";
 
   const card = (lbl, val, color, sub, hl = false) =>
     `<div class="card${hl ? " hl" : ""}">
@@ -5880,7 +5884,7 @@ function renderTable() {
     row.imp.forEach((v, i) => (fi[i] += v));
 
     let tr = `<tr class="${cls}">
-            <td class="ddate">${row.date.slice(8, 10)}-${row.date.slice(5, 7)}-${row.date.slice(0, 4)}</td>
+            <td class="ddate">${fmtDMY(row.date)}</td>
             <td class="dday col-sep">${dw.slice(0, 3)}</td>`;
 
     LOCS.forEach((loc, li) => {
@@ -6684,7 +6688,7 @@ function renderReport() {
         ? `${MO[tm - 1]} ${ty}`
         : `${MO[fm - 1]} ${fy} — ${MO[tm - 1]} ${ty}`;
     const genEl = document.getElementById("report-generated");
-    if (genEl) genEl.textContent = now.toLocaleDateString();
+    if (genEl) genEl.textContent = fmtDMY(now.toLocaleDateString("en-CA", { timeZone: sett.tz }));
 
     // Column labels for comparison tables
     const currLbl = `${MO[tm - 1]} ${ty}`;
@@ -7162,7 +7166,7 @@ function rptDailyLog() {
     totalRec += tRec;
     const bg = red ? "background:#fef2f2;" : r.date === TODAY ? "background:#fef9c3;" : "";
     html += `<tr style="${bg}">
-      <td style="font-weight:700;white-space:nowrap;color:${red ? "#991b1b" : "#1f2937"}">${r.date}</td>
+      <td style="font-weight:700;white-space:nowrap;color:${red ? "#991b1b" : "#1f2937"}">${fmtDMY(r.date)}</td>
       <td style="color:${red ? "#991b1b" : "#6b7280"}">${DAYS[dow(r.date)]}</td>
       ${LOCS.map((_, i) =>
         `<td><span style="color:#2563eb">${r.del[i] || 0}</span>/<span style="color:#dc2626">${r.imp[i] || 0}</span></td>`
@@ -7312,7 +7316,7 @@ function rptPeak() {
         <tbody>
           ${data.map((r, i) => `<tr>
             <td style="font-weight:700;color:${color}">#${i + 1}</td>
-            <td style="font-weight:700">${r.date}</td>
+            <td style="font-weight:700">${fmtDMY(r.date)}</td>
             <td style="color:#6b7280">${r.day}</td>
             <td style="font-weight:700;color:${color};font-size:14px">${fmt(r[valKey])}</td>
           </tr>`).join("")}
@@ -7430,7 +7434,7 @@ function rptTransfers() {
       const fromLoc = (t.from != null && LOCS[t.from]) ? LOCS[t.from] : (t.from || "—");
       const toLoc = (t.to != null && LOCS[t.to]) ? LOCS[t.to] : (t.to || "—");
       html += `<tr>
-        <td style="font-weight:700">${esc(date)}</td>
+        <td style="font-weight:700">${fmtDMY(date)}</td>
         <td style="color:#dc2626;font-weight:600">${esc(fromLoc)}</td>
         <td style="color:#6b7280">→</td>
         <td style="color:#16a34a;font-weight:600">${esc(toLoc)}</td>
@@ -7864,7 +7868,7 @@ function renderAuctionReport() {
       <tr class="${isWeekend ? "weekend" : ""}">
         <td>
           <div class="auc-date-cell">
-            <span class="auc-date-str">${r.date}</span>
+            <span class="auc-date-str">${fmtDMY(r.date)}</span>
             <span class="auc-day-tag ${isWeekend ? "is-weekend" : ""}">${dayName}</span>
           </div>
         </td>
@@ -7939,7 +7943,7 @@ function exportReport() {
     ];
     const aoa = [h1, h2];
     allRows.forEach((r) => {
-      const row = [r.date, DAYS[dow(r.date)]];
+      const row = [fmtDMY(r.date), DAYS[dow(r.date)]];
       LOCS.forEach((_, li) => row.push(r.bal[li], r.del[li], r.imp[li]));
       row.push(
         r.del.reduce((a, b) => a + b, 0),
@@ -8005,7 +8009,7 @@ function doExport() {
     ];
     const aoa = [h1, h2];
     rows.forEach((r) => {
-      const row = [r.date, DAYS[new Date(r.date + "T00:00:00").getDay()]];
+      const row = [fmtDMY(r.date), DAYS[new Date(r.date + "T00:00:00").getDay()]];
       LOCS.forEach((_, li) => row.push(r.bal[li], r.del[li], r.imp[li]));
       row.push(
         r.del.reduce((a, b) => a + b, 0),
@@ -8324,15 +8328,12 @@ function renderAll() {
 // ════════════════════════════════════════════════════
 function updateCurrentDate() {
   const currentDate = new Date();
-  const options = {
+  const weekday = currentDate.toLocaleDateString("en-US", {
     weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  };
-  const formattedDate = currentDate.toLocaleDateString("en-US", options, {
     timeZone: sett.tz,
   });
+  const ymd = currentDate.toLocaleDateString("en-CA", { timeZone: sett.tz });
+  const formattedDate = `${weekday}, ${fmtDMY(ymd)}`;
   const tsubElement = document.getElementById("tsub");
   if (tsubElement) {
     tsubElement.textContent = formattedDate;
@@ -8411,7 +8412,7 @@ function init() {
     });
     const n = new Date();
     const todayInTz = n.toLocaleDateString("en-CA", { timeZone: sett.tz });
-    document.getElementById("today-lbl").textContent = "Today: " + todayInTz;
+    document.getElementById("today-lbl").textContent = "Today: " + fmtDMY(todayInTz);
 
     // Initialize visual feedback
     initializeVisualFeedback();
