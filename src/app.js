@@ -3979,7 +3979,7 @@ function saveToFirebase() {
       if (status === 409) {
         // Another device saved newer data; don't clobber it.
         showError(
-          "Cloud-e onno device theke notun data ache. Page reload kore abar Save korun (na hole purono data overwrite hobe).",
+          "Newer data was saved from another device. Please reload the page and save again to avoid overwriting it.",
           "warning",
         );
         return false;
@@ -4073,7 +4073,7 @@ async function restoreVersion(sha) {
   }
   if (
     !confirm(
-      "Ei purono version-ta restore korben? Eta ekhonkar data replace korbe (kintu history-te sob theke jabe).",
+      "Restore this earlier version? It will replace the current data (the existing version stays in history and is not lost).",
     )
   )
     return;
@@ -5531,7 +5531,7 @@ function addHol() {
   const el = document.getElementById("hol-date");
   const d = dmyToISO(el.value);
   if (!d) {
-    alert("Date din dd/mm/yyyy format e (e.g. 01/05/2026).");
+    alert("Please enter the date in dd/mm/yyyy format (e.g. 01/05/2026).");
     return;
   }
   if (!sett.hols.includes(d)) sett.hols.push(d);
@@ -5545,7 +5545,7 @@ function addExc() {
   const el = document.getElementById("exc-date");
   const d = dmyToISO(el.value);
   if (!d) {
-    alert("Date din dd/mm/yyyy format e (e.g. 01/05/2026).");
+    alert("Please enter the date in dd/mm/yyyy format (e.g. 01/05/2026).");
     return;
   }
   if (!sett.excs.includes(d)) sett.excs.push(d);
