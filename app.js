@@ -4787,16 +4787,7 @@ async function checkCred(u, p) {
 }
 
 function showLogin(reason = "edit") {
-  document.getElementById("lock-msg").textContent =
-    reason === "save"
-      ? "Save requires login."
-      : reason === "edit"
-        ? "Edit requires login."
-        : "Login required.";
-  document.getElementById("l-user").value = "";
-  document.getElementById("l-pass").value = "";
-  document.getElementById("l-err").style.display = "none";
-  document.getElementById("ov-lock").classList.add("on");
+  showLoginForm();
 }
 
 function requireLogin(cb) {
