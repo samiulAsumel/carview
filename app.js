@@ -1,6 +1,6 @@
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  HISTORICAL DATA
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const HIST_DATA = {
   rows: [
     {
@@ -3401,9 +3401,9 @@ const HIST_DATA = {
   ],
 };
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  CONSTANTS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const LOCS = [
   "Warehouse-A",
   "Warehouse-B",
@@ -3455,9 +3455,9 @@ const GRP_SEC = [
   { lbl: "Shed", lis: [4, 5, 6, 7], bg: "#7c3c1a" },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  GITHUB STORAGE CONFIG
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //
 //  Data stored in private GitHub repo: samiulAsumel/carview-data
 //  READ:  raw.githubusercontent.com (fast CDN, no auth)
@@ -3468,16 +3468,15 @@ const GITHUB_CONFIG = {
   repo: "carview-data",
   file: "data.json",
   branch: "main",
-  _t: ["ghp_qPFJR4Fc07l","tQraCgx237L355G","fn5i0Ppp7K"],
-  get token() { return this._t.join(""); }
+  workerUrl: "https://carview-proxy.sa-sumel91.workers.dev"
 };
 
 let githubFileSha = null;
 const firebaseDb = true;
 
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  STATE
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // DB[monthKey] = [{date, del:[8], imp:[8], bal:[8], al, av}]
 // bal[i] = per-location balance (calculated)
 // closing_balance = sum(bal) - total_delivery + total_import
@@ -3502,13 +3501,13 @@ let rptMs = [];    // active filtered months for current render cycle
 let rptFocus = ""; // focus month (last of rptMs) for single-month reports
 let auctionFilter = { from: "", to: "", preset: "all" }; // independent day-level filter for auction report
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  UTILS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const mk = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
 const dIn = (y, m) => new Date(y, m, 0).getDate();
 const dow = (s) => new Date(s + "T00:00:00").getDay();
-const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "—");
+const fmt = (n) => (Number.isFinite(n) ? n.toLocaleString() : "â");
 const pct = (a, b) => (b ? Math.round(((a - b) / b) * 100) : null);
 // Escape untrusted data before inserting into HTML (data may come from
 // other devices via Firebase sync, so treat all stored strings as untrusted)
@@ -3544,23 +3543,23 @@ function isRed(s) {
 function pBadge(a, b, goodUp = true) {
   const p = pct(a, b);
   if (p === null) return "";
-  if (p === 0) return '<span class="pe">±0%</span>';
+  if (p === 0) return '<span class="pe">Â±0%</span>';
   if (b === 0 && a > 0) return '<span class="pu">New</span>'; // Previous was 0
   if (Math.abs(p) > 999)
     return '<span class="pd">>' + (goodUp ? "999%" : "999%") + "</span>"; // Cap at 999%
   const good = goodUp ? p > 0 : p < 0;
-  return `<span class="${good ? "pu" : "pd"}">${p > 0 ? "▲" : "▼"}${Math.abs(p)}%</span>`;
+  return `<span class="${good ? "pu" : "pd"}">${p > 0 ? "â²" : "â¼"}${Math.abs(p)}%</span>`;
 }
 function bBadge(p, goodUp = true) {
-  if (p === null || p === undefined) return '<span class="be">—</span>';
-  if (p === 0) return '<span class="be">±0%</span>';
+  if (p === null || p === undefined) return '<span class="be">â</span>';
+  if (p === 0) return '<span class="be">Â±0%</span>';
   const good = goodUp ? p > 0 : p < 0;
-  return `<span class="${good ? "bu" : "bd"}">${p > 0 ? "▲" : "▼"}${Math.abs(p)}%</span>`;
+  return `<span class="${good ? "bu" : "bd"}">${p > 0 ? "â²" : "â¼"}${Math.abs(p)}%</span>`;
 }
 function setDirty(v) {
   dirty = v;
   const el = document.getElementById("sv-badge");
-  el.textContent = v ? "● Unsaved" : "✓ Saved";
+  el.textContent = v ? "â Unsaved" : "â Saved";
   el.className = "sv " + (v ? "dirty" : "ok");
   const saveBtn = document.getElementById("save-button");
   if (saveBtn) {
@@ -3568,9 +3567,9 @@ function setDirty(v) {
   }
 }
 
-// ════════════════════════════════════════════════════
-//  FORMULA ENGINE — exact Excel logic
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+//  FORMULA ENGINE â exact Excel logic
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // loc_bal[i] for day-1 of month: ob[i]  (opening balance = hardcoded)
 // loc_bal[i] for day-N (N>1): prev_loc_bal[i] - prev_del[i] + prev_imp[i]
 // closing_balance = sum(loc_bals) - total_delivery_today + total_import_today
@@ -3685,9 +3684,9 @@ function loadLS() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  FIREBASE SYNC
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function loadFromFirebase(callback) {
   const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.file}?t=${Date.now()}`;
@@ -3710,18 +3709,34 @@ function saveToFirebase() {
   const dataToSave = { db: DB, sett: sett, users: users, loggedIn: loggedIn, adminHash: ADMIN_HASH };
   return (async () => {
     try {
-      const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.file}`;
-      const tk = GITHUB_CONFIG.token;
-      const check = await fetch(apiUrl, { headers: { Authorization: `token ${tk}`, Accept: "application/vnd.github.v3+json" } });
-      const { sha } = await check.json();
+      // Get current SHA first
+      const readResp = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.file}`,
+        { headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "carview-app" } }
+      );
+      const readJson = await readResp.json();
+      const sha = readJson.sha;
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(dataToSave, null, 2))));
-      const push = await fetch(apiUrl, {
+      // Send to Cloudflare Worker (token is secret there)
+      const resp = await fetch(GITHUB_CONFIG.workerUrl, {
         method: "PUT",
-        headers: { Authorization: `token ${tk}`, "Content-Type": "application/json", Accept: "application/vnd.github.v3+json" },
-        body: JSON.stringify({ message: "data update " + new Date().toISOString().slice(0, 16), content: encoded, sha })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Update data", content: encoded, sha: sha })
       });
-      return push.ok;
-    } catch(e) { console.error("GitHub save failed:", e); return false; }
+      const result = await resp.json();
+      if (result.commit) {
+        updateConnectedStatus(true);
+        return true;
+      } else {
+        console.error("Save failed:", result);
+        updateConnectedStatus(false);
+        return false;
+      }
+    } catch (e) {
+      console.error("Save error:", e);
+      updateConnectedStatus(false);
+      return false;
+    }
   })();
 }
 
@@ -3761,7 +3776,7 @@ function doSave() {
         }
         restoreButton();
         showSuccess(
-          fbSuccess ? "✓ Saved to cloud!" : "⚠ Saved to device only!",
+          fbSuccess ? "â Saved to cloud!" : "â  Saved to device only!",
         );
       })
       .catch((err) => {
@@ -3773,7 +3788,7 @@ function doSave() {
     setDirty(false);
     setTimeout(() => {
       restoreButton();
-      showSuccess("✓ Data saved successfully!");
+      showSuccess("â Data saved successfully!");
     }, 500);
   }
 }
@@ -3783,9 +3798,9 @@ function showSuccess(message) {
   successDiv.className = "success-notification";
   successDiv.innerHTML = `
                 <div class="success-content">
-                  <span class="success-icon">✅</span>
+                  <span class="success-icon">â</span>
                   <span class="success-message"></span>
-                  <button class="success-close" onclick="this.parentElement.parentElement.remove()">✕</button>
+                  <button class="success-close" onclick="this.parentElement.parentElement.remove()">â</button>
                 </div>
               `;
   successDiv.querySelector(".success-message").textContent = message;
@@ -3920,9 +3935,9 @@ function initializeVisualFeedback() {
   });
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  AUTO-SAVE FUNCTIONALITY
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 let autoSaveTimer = null;
 let autoSaveEnabled = false; // Disabled: save only on button click
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
@@ -3995,13 +4010,13 @@ function hideAutoSaveIndicator() {
 
   // Show the actual state based on dirty flag
   if (dirty) {
-    badge.innerHTML = "● Unsaved";
+    badge.innerHTML = "â Unsaved";
     badge.className = "sv dirty";
     badge.style.background = "rgba(251, 146, 60, 0.2)";
     badge.style.color = "#fdba74";
     badge.style.borderColor = "rgba(251, 146, 60, 0.3)";
   } else {
-    badge.innerHTML = "✓ Saved";
+    badge.innerHTML = "â Saved";
     badge.className = "sv ok";
     badge.style.background = "rgba(34, 197, 94, 0.2)";
     badge.style.color = "#86efac";
@@ -4085,9 +4100,9 @@ function recalcFrom(key, fi) {
   }
 }
 
-// ════════════════════════════════════════════════════
-//  CAR TRANSFER — core logic
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+//  CAR TRANSFER â core logic
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 /**
  * Apply stored transfers for a given date to the row's bal[] array.
@@ -4167,7 +4182,7 @@ function recalcTransferCascade(startMonthKey) {
 
 /**
  * Adds a car transfer record and triggers balance recalculation.
- * Only the Balance column per location is affected — del[] and imp[] are untouched.
+ * Only the Balance column per location is affected â del[] and imp[] are untouched.
  */
 function addCarTransfer(date, fromIdx, toIdx, qty, note) {
   requireLogin(() => {
@@ -4218,7 +4233,7 @@ function addCarTransfer(date, fromIdx, toIdx, qty, note) {
     renderTransferPage();
     renderAll();
     showSuccess(
-      `✓ Transfer recorded: ${qty} cars — ${LOCS[fromIdx]} → ${LOCS[toIdx]}`,
+      `â Transfer recorded: ${qty} cars â ${LOCS[fromIdx]} â ${LOCS[toIdx]}`,
     );
   });
 }
@@ -4239,7 +4254,7 @@ function removeCarTransfer(date, idx) {
     renderTransferPage();
     renderAll();
     showSuccess(
-      `✓ Transfer removed (${t.qty} cars — ${LOCS[t.from]} → ${LOCS[t.to]})`,
+      `â Transfer removed (${t.qty} cars â ${LOCS[t.from]} â ${LOCS[t.to]})`,
     );
   });
 }
@@ -4260,59 +4275,59 @@ function renderTransferPage() {
   // Get today's date for default value
   const todayVal = TODAY || new Date().toLocaleDateString("en-CA");
 
-  // ── Form section ─────────────────────────────────
+  // ââ Form section âââââââââââââââââââââââââââââââââ
   const form = `
     <div class="transfer-form-card">
       <div class="transfer-form-title">
-        <span style="font-size:20px">🚗</span> Add Car Transfer
+        <span style="font-size:20px">ð</span> Add Car Transfer
         <span style="font-size:11px;font-weight:500;color:#64748b;margin-left:auto">
-          Moves cars between locations — only Balance column is affected
+          Moves cars between locations â only Balance column is affected
         </span>
       </div>
 
       <div class="transfer-form-grid">
         <div class="transfer-field">
-          <label>📅 Transfer Date</label>
+          <label>ð Transfer Date</label>
           <input type="date" id="tr-date" value="${todayVal}" />
         </div>
         <div class="transfer-field">
-          <label>🔢 Number of Cars</label>
+          <label>ð¢ Number of Cars</label>
           <input type="number" id="tr-qty" min="1" max="9999" placeholder="e.g. 10" />
         </div>
         <div class="transfer-field">
-          <label>🔴 From Location</label>
+          <label>ð´ From Location</label>
           <select id="tr-from" onchange="renderTransferPreview()">${locOptions}</select>
         </div>
         <div class="transfer-field">
-          <label>🟢 To Location</label>
+          <label>ð¢ To Location</label>
           <select id="tr-to" onchange="renderTransferPreview()">${locOptions}</select>
         </div>
       </div>
 
       <div class="transfer-arrow-row" id="tr-preview">
         <div class="transfer-loc-chip" id="tr-chip-from" style="border-color:#fca5a5;color:#b91c1c;background:#fee2e2">${LOCS[0]}</div>
-        <div class="transfer-arrow-badge">→</div>
+        <div class="transfer-arrow-badge">â</div>
         <div class="transfer-loc-chip" id="tr-chip-to" style="border-color:#86efac;color:#166534;background:#dcfce7">${LOCS[1]}</div>
       </div>
 
       <div class="transfer-field" style="margin-bottom:14px">
-        <label>📝 Note (optional)</label>
+        <label>ð Note (optional)</label>
         <input type="text" id="tr-note" placeholder="e.g. Repositioning for auction" maxlength="80" />
       </div>
 
       <button class="transfer-submit-btn" onclick="submitTransferForm()">
-        <span>🚗</span> Record Transfer
+        <span>ð</span> Record Transfer
       </button>
     </div>`;
 
-  // ── Existing transfers list ───────────────────────
+  // ââ Existing transfers list âââââââââââââââââââââââ
   const transfers = sett.transfers || {};
   const sortedDates = Object.keys(transfers).sort();
 
   let listHtml = "";
   if (!sortedDates.length) {
     listHtml = `<div class="transfer-empty-state">
-      <div class="transfer-empty-icon">🚗</div>
+      <div class="transfer-empty-icon">ð</div>
       <p>No transfers recorded yet.<br>Use the form above to add one.</p>
     </div>`;
   } else {
@@ -4332,21 +4347,21 @@ function renderTransferPage() {
           const fromCfg = LOC_CFG[LOCS[t.from]] || {};
           const toCfg = LOC_CFG[LOCS[t.to]] || {};
           const noteHtml = t.note
-            ? `<span class="transfer-item-note" title="${esc(t.note)}">💬 ${esc(t.note)}</span>`
+            ? `<span class="transfer-item-note" title="${esc(t.note)}">ð¬ ${esc(t.note)}</span>`
             : `<span class="transfer-item-note"></span>`;
           return `<div class="transfer-item">
-          <span class="transfer-item-qty">🚗 ${t.qty}</span>
+          <span class="transfer-item-qty">ð ${t.qty}</span>
           <span class="transfer-item-from" style="background:${fromCfg.lt || "#fee2e2"};color:${fromCfg.bg || "#b91c1c"};border-color:${fromCfg.bg || "#fca5a5"}">${LOCS[t.from] || "Loc " + esc(t.from)}</span>
-          <span class="transfer-item-arrow">→</span>
+          <span class="transfer-item-arrow">â</span>
           <span class="transfer-item-to" style="background:${toCfg.lt || "#dcfce7"};color:${toCfg.bg || "#166534"};border-color:${toCfg.bg || "#86efac"}">${LOCS[t.to] || "Loc " + esc(t.to)}</span>
           ${noteHtml}
-          <button class="transfer-item-del" data-date="${esc(date)}" onclick="removeCarTransfer(this.dataset.date, ${idx})" title="Remove this transfer">✕</button>
+          <button class="transfer-item-del" data-date="${esc(date)}" onclick="removeCarTransfer(this.dataset.date, ${idx})" title="Remove this transfer">â</button>
         </div>`;
         })
         .join("");
 
       listHtml += `<div class="transfer-date-group">
-        <div class="transfer-date-label">📅 ${esc(displayDate)}</div>
+        <div class="transfer-date-label">ð ${esc(displayDate)}</div>
         ${items}
       </div>`;
     });
@@ -4355,7 +4370,7 @@ function renderTransferPage() {
   const list = `
     <div class="transfer-list-card">
       <div class="transfer-list-title">
-        <span style="font-size:20px">📋</span> Transfer History
+        <span style="font-size:20px">ð</span> Transfer History
         <span style="font-size:11px;font-weight:500;color:#64748b;margin-left:auto">
           ${sortedDates.length ? sortedDates.length + " date(s) with transfers" : "No transfers yet"}
         </span>
@@ -4365,14 +4380,14 @@ function renderTransferPage() {
 
   el.innerHTML = `<div class="transfer-page-wrap" style="padding:10px 14px">${form}${list}</div>`;
 
-  // Set the "to" dropdown default to index 1 so from≠to by default
+  // Set the "to" dropdown default to index 1 so fromâ to by default
   const toSel = document.getElementById("tr-to");
   if (toSel && toSel.options.length > 1) toSel.selectedIndex = 1;
   renderTransferPreview();
 }
 
 /**
- * Updates the live from→to preview chips when dropdowns change.
+ * Updates the live fromâto preview chips when dropdowns change.
  */
 function renderTransferPreview() {
   const fromSel = document.getElementById("tr-from");
@@ -4388,12 +4403,12 @@ function renderTransferPreview() {
   const fromCfg = LOC_CFG[LOCS[fi]] || {};
   const toCfg = LOC_CFG[LOCS[ti]] || {};
 
-  chipFrom.textContent = LOCS[fi] || "—";
+  chipFrom.textContent = LOCS[fi] || "â";
   chipFrom.style.background = fromCfg.lt || "#fee2e2";
   chipFrom.style.color = fromCfg.bg || "#b91c1c";
   chipFrom.style.borderColor = fromCfg.bg || "#fca5a5";
 
-  chipTo.textContent = LOCS[ti] || "—";
+  chipTo.textContent = LOCS[ti] || "â";
   chipTo.style.background = toCfg.lt || "#dcfce7";
   chipTo.style.color = toCfg.bg || "#166534";
   chipTo.style.borderColor = toCfg.bg || "#86efac";
@@ -4467,12 +4482,12 @@ const months = () =>
     .filter((k) => /^\d{4}-\d{2}$/.test(k))
     .sort();
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  AUTHENTICATION & SECURITY
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const ADMIN_USER = "admin";
 // SHA-256 of the default password ("admin"). Anyone still on the default
-// gets a warning at login/startup — see warnIfDefaultPassword().
+// gets a warning at login/startup â see warnIfDefaultPassword().
 const ADMIN_DEFAULT_SHA256 =
   "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
 let ADMIN_HASH = ADMIN_DEFAULT_SHA256; // Will be updated when password changes
@@ -4537,7 +4552,7 @@ function showLoginForm() {
 
   modal.innerHTML = `
           <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); min-width: 400px;">
-            <h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 18px;">🔐 Login Required</h3>
+            <h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 18px;">ð Login Required</h3>
             <div style="margin-bottom: 15px;">
               <label style="display: block; margin-bottom: 5px; color: #374151; font-size: 14px; font-weight: 500;">Username:</label>
               <input type="text" id="login-username" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;" placeholder="Enter username">
@@ -4661,7 +4676,7 @@ function logout() {
 function updateLoginUI() {
   document.getElementById("lock-info").textContent = isLoggedIn
     ? `Logged in: ${currentUser}`
-    : "Not logged in — login to edit/save";
+    : "Not logged in â login to edit/save";
 
   const loginBtn = document.getElementById("login-btn");
   const logoutBtn = document.getElementById("logout-btn");
@@ -4678,7 +4693,7 @@ function updateLoginUI() {
 function warnIfDefaultPassword() {
   if (isLoggedIn && currentUser === ADMIN_USER && ADMIN_HASH === ADMIN_DEFAULT_SHA256) {
     showError(
-      "You are using the default admin password. Change it now in Settings → Admin Password.",
+      "You are using the default admin password. Change it now in Settings â Admin Password.",
       "warning",
     );
   }
@@ -4748,9 +4763,9 @@ async function changeAdminPassword() {
   showSuccess("Password changed successfully!");
 }
 
-// ════════════════════════════════════════════════════
-//  AUTH  — must login to edit/save
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+//  AUTH  â must login to edit/save
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function isAdmin(u) {
   return u === ADMIN_USER;
 }
@@ -4793,9 +4808,9 @@ function requireLogin(cb) {
   showLoginForm();
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  USER MANAGEMENT  (max 3 + admin)
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function addUser() {
   const u = document.getElementById("s-user").value.trim();
   const p = document.getElementById("s-pass").value;
@@ -4834,9 +4849,9 @@ async function addUser() {
   alert(`User "${u}" added successfully.`);
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  UNDO
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function pushUndo() {
   undoStack.push({ key: cur, data: JSON.parse(JSON.stringify(DB[cur])) });
   if (undoStack.length > 50) undoStack.shift();
@@ -4855,9 +4870,9 @@ function undoLast() {
   });
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  DATA VALIDATION & ERROR HANDLING
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function validateNumber(value, fieldName, min = 0, max = 99999) {
   const num = parseInt(value);
@@ -4909,9 +4924,9 @@ function showError(message, type = "error") {
   errorDiv.className = `error-notification ${type}`;
   errorDiv.innerHTML = `
                 <div class="error-content">
-                  <span class="error-icon">${type === "error" ? "⚠️" : "ℹ️"}</span>
+                  <span class="error-icon">${type === "error" ? "â ï¸" : "â¹ï¸"}</span>
                   <span class="error-message"></span>
-                  <button class="error-close" onclick="this.parentElement.parentElement.remove()">✕</button>
+                  <button class="error-close" onclick="this.parentElement.parentElement.remove()">â</button>
                 </div>
               `;
   errorDiv.querySelector(".error-message").textContent = message;
@@ -4997,9 +5012,9 @@ function validateAndShowError(input, fieldName, min = 0, max = 99999) {
   return validation.value;
 }
 
-// ════════════════════════════════════════════════════
-//  INPUT HANDLERS  — require login
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+//  INPUT HANDLERS  â require login
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function onDel(key, ri, li, val) {
   requireLogin(() => {
     const validatedValue = validateAndShowError(
@@ -5073,13 +5088,13 @@ function editRotNo(td, key, ri) {
       const val = inp.value.trim().slice(0, 30);
       DB[key][ri].rn = val;
       setDirty(true);
-      td.innerHTML = val ? `<span class="rn-text">${esc(val)}</span>` : '<span class="rn-dash">—</span>';
+      td.innerHTML = val ? `<span class="rn-text">${esc(val)}</span>` : '<span class="rn-dash">â</span>';
     };
     inp.addEventListener("blur", commit);
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") inp.blur();
       if (e.key === "Escape") {
-        td.innerHTML = saved ? `<span class="rn-text">${esc(saved)}</span>` : '<span class="rn-dash">—</span>';
+        td.innerHTML = saved ? `<span class="rn-text">${esc(saved)}</span>` : '<span class="rn-dash">â</span>';
       }
     });
   });
@@ -5101,9 +5116,9 @@ function onOpenBal(key, ri, li, val) {
   });
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  SETTINGS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function saveSett() {
   sett.fri = document.getElementById("cb-fri").checked;
   sett.sat = document.getElementById("cb-sat").checked;
@@ -5149,7 +5164,7 @@ function renderSettings() {
         .sort()
         .map(
           (d) =>
-            `<span class="htag">${esc(d)} <span style="cursor:pointer;color:#b91c1c" data-d="${esc(d)}" onclick="sett.hols=sett.hols.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">✕</span></span>`,
+            `<span class="htag">${esc(d)} <span style="cursor:pointer;color:#b91c1c" data-d="${esc(d)}" onclick="sett.hols=sett.hols.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">â</span></span>`,
         )
         .join("")
     : '<span style="color:#aaa;font-size:10px">None</span>';
@@ -5159,7 +5174,7 @@ function renderSettings() {
         .sort()
         .map(
           (d) =>
-            `<span class="htag htag-g">${esc(d)} <span style="cursor:pointer;color:#166534" data-d="${esc(d)}" onclick="sett.excs=sett.excs.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">✕</span></span>`,
+            `<span class="htag htag-g">${esc(d)} <span style="cursor:pointer;color:#166534" data-d="${esc(d)}" onclick="sett.excs=sett.excs.filter(x=>x!==this.dataset.d);setDirty(true);renderSettings();renderTable();">â</span></span>`,
         )
         .join("")
     : '<span style="color:#aaa;font-size:10px">None</span>';
@@ -5190,9 +5205,9 @@ function delUser(u) {
   renderSettings();
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  MONTH BAR
-// ═══════════════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 let showAllMonths = false;
 
 function renderMbar() {
@@ -5224,7 +5239,7 @@ function renderMbar() {
     btn.style.color = "#fff";
     btn.style.marginRight = "8px";
     btn.style.border = "none";
-    btn.textContent = "←";
+    btn.textContent = "â";
     btn.title = "Show Previous Months";
     btn.onclick = () => {
       showAllMonths = true;
@@ -5242,7 +5257,7 @@ function renderMbar() {
     btn.style.color = "#fff";
     btn.style.marginLeft = "8px";
     btn.style.border = "none";
-    btn.textContent = "→";
+    btn.textContent = "â";
     btn.title = "Show Last 12 Months";
     btn.onclick = () => {
       showAllMonths = false;
@@ -5254,7 +5269,7 @@ function renderMbar() {
   // Update login status
   document.getElementById("lock-info").textContent = isLoggedIn
     ? `Logged in: ${currentUser}`
-    : "Not logged in — login to edit/save";
+    : "Not logged in â login to edit/save";
 
   // Show/hide login and logout buttons
   const loginBtn = document.getElementById("login-btn");
@@ -5269,9 +5284,9 @@ function renderMbar() {
   }
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  SUMMARY CARDS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function renderSumCards() {
   const s = summ(cur);
   const ms = months();
@@ -5290,13 +5305,13 @@ function renderSumCards() {
   const avgImp = wDays ? Math.round(s.imp / wDays) : 0;
 
   const formatDMY = (dateStr) => {
-    if (!dateStr) return "—";
+    if (!dateStr) return "â";
     const [year, month, day] = dateStr.split("-");
     return `${day}-${month}-${year}`;
   };
 
   const formatMonthLabel = (monthKey) => {
-    if (!monthKey) return "—";
+    if (!monthKey) return "â";
     const [year, month] = monthKey.split("-").map(Number);
     const date = new Date(year, month - 1, 1);
     return date.toLocaleDateString("en-GB", {
@@ -5310,7 +5325,7 @@ function renderSumCards() {
     return row[field].reduce((acc, val) => acc + Number(val || 0), 0);
   };
 
-  const prevMonthClose = ps ? fmt(ps.bal) : "—";
+  const prevMonthClose = ps ? fmt(ps.bal) : "â";
   const todayDate = TODAY;
   const rowsBeforeToday = sortedRows.filter((r) => r.date < todayDate);
   const nonRedBeforeToday = rowsBeforeToday.filter((r) => !isRed(r.date));
@@ -5318,7 +5333,7 @@ function renderSumCards() {
     ? nonRedBeforeToday[nonRedBeforeToday.length - 1]
     : null;
   const prevWorkDel = totalForRow(prevWorkingRow, "del");
-  const prevWorkDate = prevWorkingRow ? formatDMY(prevWorkingRow.date) : "—";
+  const prevWorkDate = prevWorkingRow ? formatDMY(prevWorkingRow.date) : "â";
   const currentRow =
     sortedRows.find((r) => r.date === todayDate) ||
     sortedRows[sortedRows.length - 1] ||
@@ -5326,7 +5341,7 @@ function renderSumCards() {
   const prevDayIndex = currentRow ? sortedRows.indexOf(currentRow) - 1 : -1;
   const prevDay = prevDayIndex >= 0 ? sortedRows[prevDayIndex] : null;
   const prevDayReceive = totalForRow(prevDay, "imp");
-  const prevDayDate = prevDay ? formatDMY(prevDay.date) : "—";
+  const prevDayDate = prevDay ? formatDMY(prevDay.date) : "â";
 
   const card = (lbl, val, color, sub, hl = false) =>
     `<div class="card${hl ? " hl" : ""}">
@@ -5348,13 +5363,13 @@ function renderSumCards() {
     "Total Delivery",
     fmt(s.del),
     "#1d4ed8",
-    ps ? pBadge(s.del, ps.del, false) : "—",
+    ps ? pBadge(s.del, ps.del, false) : "â",
   );
   h += card(
     "Total Receive",
     fmt(s.imp),
     "#92400e",
-    ps ? pBadge(s.imp, ps.imp, true) : "—",
+    ps ? pBadge(s.imp, ps.imp, true) : "â",
   );
   // 3. Current State (Highlighted)
   h += card(
@@ -5401,9 +5416,9 @@ function renderSumCards() {
   document.getElementById("sum-cards").innerHTML = h;
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  GROUP CARDS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function renderGrpCards() {
   const ms = months();
   const idx = ms.indexOf(cur);
@@ -5447,23 +5462,23 @@ function renderGrpCards() {
   document.getElementById("grp-cards").innerHTML = h;
 }
 
-// ════════════════════════════════════════════════════
-//  MAIN TABLE  — no horizontal scroll, tight fit
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+//  MAIN TABLE  â no horizontal scroll, tight fit
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function renderTable() {
   const rows = DB[cur] || [];
 
   // Empty state check
   if (!rows || rows.length === 0) {
     document.getElementById("tbl-scroll").innerHTML =
-      '<div style="text-align:center;padding:60px 20px;color:#64748b;background:#f8fafc;border-radius:12px;margin:20px;"><div style="font-size:48px;margin-bottom:16px;">📋</div><p style="font-size:16px;font-weight:600;margin-bottom:8px;">No data for this month</p><p style="font-size:13px;">Click "Generate Next Month" button or switch to another month</p></div>';
+      '<div style="text-align:center;padding:60px 20px;color:#64748b;background:#f8fafc;border-radius:12px;margin:20px;"><div style="font-size:48px;margin-bottom:16px;">ð</div><p style="font-size:16px;font-weight:600;margin-bottom:8px;">No data for this month</p><p style="font-size:13px;">Click "Generate Next Month" button or switch to another month</p></div>';
     return;
   }
 
-  // ── Header ──────────────────────────────────────
-  // Row 1: Date | Day | [loc colspan 3] × 8 | Total Delivery | Auc Val | Closing Balance | Total Import
-  // Row 2:              [Bal | Del | Imp] × 8
-  // NO gap between loc header and sub-headers — same background, borderless join
+  // ââ Header ââââââââââââââââââââââââââââââââââââââ
+  // Row 1: Date | Day | [loc colspan 3] Ã 8 | Total Delivery | Auc Val | Closing Balance | Total Import
+  // Row 2:              [Bal | Del | Imp] Ã 8
+  // NO gap between loc header and sub-headers â same background, borderless join
 
   let h1 = `<tr><th class="hdate" rowspan="2">Date</th><th class="hday col-sep" rowspan="2">Day</th>`;
   LOCS.forEach((loc, li) => {
@@ -5478,7 +5493,7 @@ function renderTable() {
               <th class="thi gsp" rowspan="2">Total<br>Import</th>
               <th class="thrn gsp" rowspan="2">Rot<br>No</th></tr>`;
 
-  // Row 2 sub-headers — SAME color as parent, NO top border gap
+  // Row 2 sub-headers â SAME color as parent, NO top border gap
   let h2 = "<tr>";
   LOCS.forEach((loc, li) => {
     const cfg = LOC_CFG[loc];
@@ -5490,7 +5505,7 @@ function renderTable() {
   });
   h2 += "</tr>";
 
-  // ── Body ─────────────────────────────────────────
+  // ââ Body âââââââââââââââââââââââââââââââââââââââââ
   let body = "<tbody>";
   let fd = LOCS.map(() => 0),
     fi = LOCS.map(() => 0),
@@ -5522,12 +5537,12 @@ function renderTable() {
       tr += `<td class="col-sep"><input class="ci imp" type="number" min="0" value="${row.imp[li]}" onchange="onImp('${cur}',${ri},${li},this.value)"></td>`;
     });
 
-    tr += `<td class="tdel gsp">${tDel || "—"}</td>`;
+    tr += `<td class="tdel gsp">${tDel || "â"}</td>`;
     tr += `<td class="col-sep"><input class="ci auc" type="number" min="0" value="${row.av || 0}" onchange="onAuc('${cur}',${ri},'av',this.value)" style="width:100%"></td>`;
     tr += `<td class="tcb gsp">${closing}</td>`;
-    tr += `<td class="timp gsp">${tImp || "—"}</td>`;
+    tr += `<td class="timp gsp">${tImp || "â"}</td>`;
     const rnVal = row.rn || "";
-    tr += `<td class="trn gsp" title="Click to edit" onclick="editRotNo(this,'${cur}',${ri})">${rnVal ? `<span class="rn-text">${esc(rnVal)}</span>` : '<span class="rn-dash">—</span>'}</td>`;
+    tr += `<td class="trn gsp" title="Click to edit" onclick="editRotNo(this,'${cur}',${ri})">${rnVal ? `<span class="rn-text">${esc(rnVal)}</span>` : '<span class="rn-dash">â</span>'}</td>`;
     tr += "</tr>";
     body += tr;
   });
@@ -5551,10 +5566,10 @@ function renderTable() {
   const td2 = fd.reduce((a, b) => a + b, 0),
     ti2 = fi.reduce((a, b) => a + b, 0);
   const aucTotal = fa;
-  foot += `<td class="gsp" style="color:#1d4ed8;font-size:12px">${td2 > 0 ? td2.toLocaleString() : "—"}</td>
-               <td style="color:#7c3aed;font-size:14px;font-weight:700">${aucTotal > 0 ? aucTotal.toLocaleString() : "—"}</td>
+  foot += `<td class="gsp" style="color:#1d4ed8;font-size:12px">${td2 > 0 ? td2.toLocaleString() : "â"}</td>
+               <td style="color:#7c3aed;font-size:14px;font-weight:700">${aucTotal > 0 ? aucTotal.toLocaleString() : "â"}</td>
                <td class="gsp" style="color:#166534;font-size:14px;font-weight:700">${lastClosing}</td>
-               <td class="gsp" style="color:#92400e;font-size:12px">${ti2 > 0 ? ti2.toLocaleString() : "—"}</td>
+               <td class="gsp" style="color:#92400e;font-size:12px">${ti2 > 0 ? ti2.toLocaleString() : "â"}</td>
                <td class="gsp"></td></tr>`;
   body += foot + "</tbody>";
 
@@ -5566,9 +5581,9 @@ function renderTable() {
   tbl.insertAdjacentHTML("beforeend", `<thead>${h1}${h2}</thead>${body}`);
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  CHARTS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function killCharts() {
   ["c-trend", "c-cm-di", "c-cm-bal", "c-cmp", "c-loc", "c-loc-di", "c-net"].forEach((id) => {
     if (CH[id]) {
@@ -5637,7 +5652,7 @@ function updateForecastView() {
   if (summaryDiv) {
     summaryDiv.innerHTML = `
             <div style="grid-column:1/-1;padding:24px;background:linear-gradient(135deg,#f8fafc,#f1f5f9);border-radius:12px;">
-              <h3 style="font-size:18px;font-weight:700;color:#1f2937;margin:0 0 20px 0;">🔮 6-Month Stock Forecast</h3>
+              <h3 style="font-size:18px;font-weight:700;color:#1f2937;margin:0 0 20px 0;">ð® 6-Month Stock Forecast</h3>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
                 <div style="padding:16px;background:#fff;border-radius:8px;">
                   <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Projected Balance</div>
@@ -5673,14 +5688,14 @@ function updateSummaryView() {
 function refreshReport(e) {
   const button = (e && e.target) || (typeof event !== "undefined" && event.target);
   if (button) {
-    button.textContent = "🔄 Refreshing...";
+    button.textContent = "ð Refreshing...";
     button.disabled = true;
   }
 
   setTimeout(() => {
     renderReport();
     if (button) {
-      button.innerHTML = "<span>🔄</span> Refresh";
+      button.innerHTML = "<span>ð</span> Refresh";
       button.disabled = false;
     }
     showSuccess("Report refreshed successfully");
@@ -5717,7 +5732,7 @@ function updateLiveMetrics() {
       );
       prevDayDelivery.textContent = fmt(totalPrevWorkDelivery);
     } else {
-      prevDayDelivery.textContent = "—";
+      prevDayDelivery.textContent = "â";
     }
   }
 
@@ -6084,12 +6099,12 @@ function renderChartQuickStats(ms, cs) {
     </div>`;
 
   let h = "";
-  h += card("Balance", cs.bal, "#166534", ps ? pBadge(cs.bal, ps.bal) : "—", "💰");
-  h += card("Delivery", cs.del, "#1d4ed8", ps ? pBadge(cs.del, ps.del, false) : "—", "📤");
-  h += card("Receive", cs.imp, "#92400e", ps ? pBadge(cs.imp, ps.imp, true) : "—", "📥");
-  h += card("D/R Ratio", ratio + "%", ratio <= 75 ? "#16a34a" : "#dc2626", ratio <= 75 ? "✅ Good" : "⚠️ High", "📊");
-  h += card("Net Change", cs.imp - cs.del >= 0 ? "+" + (cs.imp - cs.del) : cs.imp - cs.del, cs.imp - cs.del >= 0 ? "#16a34a" : "#dc2626", cs.imp - cs.del >= 0 ? "↗ Positive" : "↘ Negative", cs.imp - cs.del >= 0 ? "📈" : "📉");
-  h += card("Work Days", DB[cur] ? DB[cur].filter((r) => !isRed(r.date)).length : 0, "#6366f1", ms.length + " months", "📅");
+  h += card("Balance", cs.bal, "#166534", ps ? pBadge(cs.bal, ps.bal) : "â", "ð°");
+  h += card("Delivery", cs.del, "#1d4ed8", ps ? pBadge(cs.del, ps.del, false) : "â", "ð¤");
+  h += card("Receive", cs.imp, "#92400e", ps ? pBadge(cs.imp, ps.imp, true) : "â", "ð¥");
+  h += card("D/R Ratio", ratio + "%", ratio <= 75 ? "#16a34a" : "#dc2626", ratio <= 75 ? "â Good" : "â ï¸ High", "ð");
+  h += card("Net Change", cs.imp - cs.del >= 0 ? "+" + (cs.imp - cs.del) : cs.imp - cs.del, cs.imp - cs.del >= 0 ? "#16a34a" : "#dc2626", cs.imp - cs.del >= 0 ? "â Positive" : "â Negative", cs.imp - cs.del >= 0 ? "ð" : "ð");
+  h += card("Work Days", DB[cur] ? DB[cur].filter((r) => !isRed(r.date)).length : 0, "#6366f1", ms.length + " months", "ð");
 
   document.getElementById("chart-quick-stats").innerHTML = h;
 }
@@ -6133,12 +6148,12 @@ function renderLocSummaryTable() {
   document.getElementById("loc-summary-table").innerHTML = h;
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  REPORT
-// ════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  REPORT FILTER HELPERS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function getFilteredMonths() {
   const all = months();
@@ -6312,7 +6327,7 @@ function renderReport() {
     if (periodEl) periodEl.textContent =
       ms.length === 1
         ? `${MO[tm - 1]} ${ty}`
-        : `${MO[fm - 1]} ${fy} — ${MO[tm - 1]} ${ty}`;
+        : `${MO[fm - 1]} ${fy} â ${MO[tm - 1]} ${ty}`;
     const genEl = document.getElementById("report-generated");
     if (genEl) genEl.textContent = now.toLocaleDateString();
 
@@ -6325,7 +6340,7 @@ function renderReport() {
     // --- Location vs Compare Period (locH) ---
     let locH = `<div class="simple-table-container"><table class="simple-table">
               <thead><tr>
-                <th style="text-align:left">📍 Location</th>
+                <th style="text-align:left">ð Location</th>
                 <th>${currLbl}<br>Receive</th><th>${prevLbl}<br>Receive</th><th>Recv Change</th>
                 <th>${currLbl}<br>Delivery</th><th>${prevLbl}<br>Delivery</th><th>Del Change</th>
               </tr></thead><tbody>`;
@@ -6346,11 +6361,11 @@ function renderReport() {
       locH += `<tr>
         <td class="month" style="text-align:left;font-weight:700">${loc}</td>
         <td style="color:#92400e;font-weight:700;font-size:13px">${fmt(cI)}</td>
-        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pI) : "—"}</td>
-        <td style="font-weight:700"><span style="color:${iDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${iDiff >= 0 ? "+" : ""}${fmt(iDiff)}</span><br><span style="font-size:10px;color:${iPct >= 0 ? "#16a34a" : "#dc2626"}">(${iPct >= 0 ? "↑" : "↓"}${Math.abs(iPct)}%)</span></td>
+        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pI) : "â"}</td>
+        <td style="font-weight:700"><span style="color:${iDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${iDiff >= 0 ? "+" : ""}${fmt(iDiff)}</span><br><span style="font-size:10px;color:${iPct >= 0 ? "#16a34a" : "#dc2626"}">(${iPct >= 0 ? "â" : "â"}${Math.abs(iPct)}%)</span></td>
         <td style="color:#1d4ed8;font-weight:700;font-size:13px">${fmt(cD)}</td>
-        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pD) : "—"}</td>
-        <td style="font-weight:700"><span style="color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${dDiff >= 0 ? "+" : ""}${fmt(dDiff)}</span><br><span style="font-size:10px;color:${dPct >= 0 ? "#16a34a" : "#dc2626"}">(${dPct >= 0 ? "↑" : "↓"}${Math.abs(dPct)}%)</span></td>
+        <td style="color:#64748b;font-size:12px">${compareKey ? fmt(pD) : "â"}</td>
+        <td style="font-weight:700"><span style="color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};font-size:11px">${dDiff >= 0 ? "+" : ""}${fmt(dDiff)}</span><br><span style="font-size:10px;color:${dPct >= 0 ? "#16a34a" : "#dc2626"}">(${dPct >= 0 ? "â" : "â"}${Math.abs(dPct)}%)</span></td>
       </tr>`;
     });
 
@@ -6367,13 +6382,13 @@ function renderReport() {
     const tiPct = tPI > 0 ? Math.round((tiD / tPI) * 100) : 0;
     const tdPct = tPD > 0 ? Math.round((tdD / tPD) * 100) : 0;
     locH += `<tr style="background:#f1f5f9;font-weight:700">
-      <td class="month" style="text-align:left">📊 TOTAL</td>
+      <td class="month" style="text-align:left">ð TOTAL</td>
       <td style="color:#92400e;font-size:14px">${fmt(tCI)}</td>
-      <td style="color:#64748b">${compareKey ? fmt(tPI) : "—"}</td>
-      <td style="color:${tiD >= 0 ? "#16a34a" : "#dc2626"}">${tiD >= 0 ? "+" : ""}${fmt(tiD)} (${tiPct >= 0 ? "↑" : "↓"}${Math.abs(tiPct)}%)</td>
+      <td style="color:#64748b">${compareKey ? fmt(tPI) : "â"}</td>
+      <td style="color:${tiD >= 0 ? "#16a34a" : "#dc2626"}">${tiD >= 0 ? "+" : ""}${fmt(tiD)} (${tiPct >= 0 ? "â" : "â"}${Math.abs(tiPct)}%)</td>
       <td style="color:#1d4ed8;font-size:14px">${fmt(tCD)}</td>
-      <td style="color:#64748b">${compareKey ? fmt(tPD) : "—"}</td>
-      <td style="color:${tdD >= 0 ? "#16a34a" : "#dc2626"}">${tdD >= 0 ? "+" : ""}${fmt(tdD)} (${tdPct >= 0 ? "↑" : "↓"}${Math.abs(tdPct)}%)</td>
+      <td style="color:#64748b">${compareKey ? fmt(tPD) : "â"}</td>
+      <td style="color:${tdD >= 0 ? "#16a34a" : "#dc2626"}">${tdD >= 0 ? "+" : ""}${fmt(tdD)} (${tdPct >= 0 ? "â" : "â"}${Math.abs(tdPct)}%)</td>
     </tr>`;
     locH += "</tbody></table></div>";
 
@@ -6449,7 +6464,7 @@ function toggleRptSection(id) {
   if (!sec) return;
   const wasCollapsed = sec.classList.toggle("collapsed");
   const arrow = sec.querySelector(".rpt-sec-arrow");
-  if (arrow) arrow.textContent = wasCollapsed ? "▾" : "▴";
+  if (arrow) arrow.textContent = wasCollapsed ? "â¾" : "â´";
 }
 
 function generateSimpleSummaryCards(months) {
@@ -6462,7 +6477,7 @@ function generateSimpleSummaryCards(months) {
 
   return `
           <div class="simple-card">
-            <div class="card-icon">📦</div>
+            <div class="card-icon">ð¦</div>
             <div class="card-content">
               <div class="card-title">Total Delivery</div>
               <div class="card-value">${fmt(totalDel)}</div>
@@ -6470,7 +6485,7 @@ function generateSimpleSummaryCards(months) {
             </div>
           </div>
           <div class="simple-card">
-            <div class="card-icon">📥</div>
+            <div class="card-icon">ð¥</div>
             <div class="card-content">
               <div class="card-title">Total Receive</div>
               <div class="card-value">${fmt(totalRec)}</div>
@@ -6478,7 +6493,7 @@ function generateSimpleSummaryCards(months) {
             </div>
           </div>
           <div class="simple-card">
-            <div class="card-icon">📊</div>
+            <div class="card-icon">ð</div>
             <div class="card-content">
               <div class="card-title">Current Balance</div>
               <div class="card-value">${fmt(currentBal)}</div>
@@ -6486,7 +6501,7 @@ function generateSimpleSummaryCards(months) {
             </div>
           </div>
           <div class="simple-card">
-            <div class="card-icon">⚡</div>
+            <div class="card-icon">â¡</div>
             <div class="card-content">
               <div class="card-title">Efficiency</div>
               <div class="card-value">${overallEfficiency}%</div>
@@ -6613,7 +6628,7 @@ function generateTrendAnalysis(months) {
   const recentMonths = months.slice(-6);
   const trend = recentMonths.map((k) => summ(k).del);
   const isIncreasing = trend[trend.length - 1] > trend[0];
-  const trendIcon = isIncreasing ? "📈" : "📉";
+  const trendIcon = isIncreasing ? "ð" : "ð";
   const trendColor = isIncreasing ? "#16a34a" : "#dc2626";
 
   return `
@@ -6630,7 +6645,7 @@ function generateTrendAnalysis(months) {
                         .join("")}
                     </div>
                     <div class="trend-labels">
-                      ${recentMonths.map((k) => k.split("-")[1]).join(" • ")}
+                      ${recentMonths.map((k) => k.split("-")[1]).join(" â¢ ")}
                     </div>
                   </div>
                   <p class="trend-summary">Trend is ${isIncreasing ? "increasing" : "decreasing"} over the last 6 months</p>
@@ -6661,7 +6676,7 @@ function generateSeasonalPatterns(months) {
 
   return `
                 <div class="analytics-card">
-                  <h4>📅 Seasonal Patterns</h4>
+                  <h4>ð Seasonal Patterns</h4>
                   <div class="seasonal-list">
                     ${avgSeasonal
                       .slice(0, 3)
@@ -6699,7 +6714,7 @@ function generateEfficiencyMetrics(months) {
 
   return `
                 <div class="analytics-card">
-                  <h4>⚡ Efficiency Metrics</h4>
+                  <h4>â¡ Efficiency Metrics</h4>
                   <div class="efficiency-stats">
                     <div class="eff-stat">
                       <div class="eff-label">Overall Efficiency</div>
@@ -6718,9 +6733,9 @@ function generateEfficiencyMetrics(months) {
               `;
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  REPORT SECTION RENDERERS  (all use rptMs / rptFocus)
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function rptExecutive() {
   const allRows = [];
@@ -6755,15 +6770,15 @@ function rptExecutive() {
 
   document.getElementById("rpt-executive").innerHTML = `
     <div class="rpt-kpi-grid">
-      ${kpi("📥", fmt(totImp), "Total Receive", "#dc2626", ps ? "Compare: " + fmt(ps.imp) : "")}
-      ${kpi("📤", fmt(totDel), "Total Delivery", "#2563eb", ps ? "Compare: " + fmt(ps.del) : "")}
-      ${kpi("🚗", fmt(totAuc), "Auction Deliveries", "#ea580c", aucShare + "% of total · " + aucDays + " active days")}
-      ${kpi("📦", fmt(totBal), "Closing Balance", "#059669", "End-of-period stock")}
-      ${kpi("⚡", eff + "%", "Delivery Efficiency", effColor, "Delivery ÷ Receive")}
-      ${kpi(net >= 0 ? "📈" : "📉", (net >= 0 ? "+" : "") + fmt(net), "Net Stock Change", net >= 0 ? "#16a34a" : "#dc2626", "Receive − Delivery")}
-      ${kpi("📅", workDays, "Working Days", "#0891b2", holDays + " holiday / off days")}
-      ${kpi("🚛", fmt(avgDelWD), "Avg Delivery / Day", "#d97706", "Per working day")}
-      ${kpi("📦", fmt(avgRecWD), "Avg Receive / Day", "#7c3aed", "Per working day")}
+      ${kpi("ð¥", fmt(totImp), "Total Receive", "#dc2626", ps ? "Compare: " + fmt(ps.imp) : "")}
+      ${kpi("ð¤", fmt(totDel), "Total Delivery", "#2563eb", ps ? "Compare: " + fmt(ps.del) : "")}
+      ${kpi("ð", fmt(totAuc), "Auction Deliveries", "#ea580c", aucShare + "% of total Â· " + aucDays + " active days")}
+      ${kpi("ð¦", fmt(totBal), "Closing Balance", "#059669", "End-of-period stock")}
+      ${kpi("â¡", eff + "%", "Delivery Efficiency", effColor, "Delivery Ã· Receive")}
+      ${kpi(net >= 0 ? "ð" : "ð", (net >= 0 ? "+" : "") + fmt(net), "Net Stock Change", net >= 0 ? "#16a34a" : "#dc2626", "Receive â Delivery")}
+      ${kpi("ð", workDays, "Working Days", "#0891b2", holDays + " holiday / off days")}
+      ${kpi("ð", fmt(avgDelWD), "Avg Delivery / Day", "#d97706", "Per working day")}
+      ${kpi("ð¦", fmt(avgRecWD), "Avg Receive / Day", "#7c3aed", "Per working day")}
     </div>`;
 }
 
@@ -6797,16 +6812,16 @@ function rptDailyLog() {
       ${LOCS.map((_, i) =>
         `<td><span style="color:#2563eb">${r.del[i] || 0}</span>/<span style="color:#dc2626">${r.imp[i] || 0}</span></td>`
       ).join("")}
-      <td style="font-weight:700;color:#2563eb">${tDel || "—"}</td>
-      <td style="font-weight:700;color:#dc2626">${tRec || "—"}</td>
+      <td style="font-weight:700;color:#2563eb">${tDel || "â"}</td>
+      <td style="font-weight:700;color:#dc2626">${tRec || "â"}</td>
       <td style="font-weight:700;color:#059669">${fmt(closing)}</td>
       <td style="font-size:10px;color:#6b7280;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.al || "")}</td>
     </tr>`;
   });
 
   html += `<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #d1d5db">
-    <td colspan="2" style="text-align:left;padding-left:10px">📊 TOTAL</td>
-    ${LOCS.map(() => "<td>—</td>").join("")}
+    <td colspan="2" style="text-align:left;padding-left:10px">ð TOTAL</td>
+    ${LOCS.map(() => "<td>â</td>").join("")}
     <td style="color:#2563eb;font-size:13px">${fmt(totalDel)}</td>
     <td style="color:#dc2626;font-size:13px">${fmt(totalRec)}</td>
     <td colspan="2"></td>
@@ -6821,9 +6836,9 @@ function rptGroup() {
   const prevRows = compareKey ? (DB[compareKey] || []) : [];
 
   const groups = [
-    { lbl: "Warehouse", lis: [0, 1], bg: "#1e4d7b", icon: "🏢" },
-    { lbl: "Yard",      lis: [2, 3], bg: "#1a5c3a", icon: "🚜" },
-    { lbl: "Shed",      lis: [4, 5, 6, 7], bg: "#7c3c1a", icon: "🏭" },
+    { lbl: "Warehouse", lis: [0, 1], bg: "#1e4d7b", icon: "ð¢" },
+    { lbl: "Yard",      lis: [2, 3], bg: "#1a5c3a", icon: "ð" },
+    { lbl: "Shed",      lis: [4, 5, 6, 7], bg: "#7c3c1a", icon: "ð­" },
   ];
 
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">';
@@ -6842,18 +6857,18 @@ function rptGroup() {
     html += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
       <div style="background:${g.bg};color:#fff;padding:14px 16px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">
         ${g.icon} ${g.lbl}
-        <span style="margin-left:auto;font-size:11px;opacity:0.75">${g.lis.map((i) => LOCS[i]).join(" · ")}</span>
+        <span style="margin-left:auto;font-size:11px;opacity:0.75">${g.lis.map((i) => LOCS[i]).join(" Â· ")}</span>
       </div>
       <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div style="text-align:center;padding:12px;background:#eff6ff;border-radius:8px;border:1px solid #dbeafe">
           <div style="font-size:20px;font-weight:700;color:#2563eb">${fmt(totDel)}</div>
           <div style="font-size:10px;color:#6b7280;margin-top:2px">Delivery</div>
-          ${prevRows.length ? `<div style="font-size:10px;color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${dDiff >= 0 ? "↑" : "↓"}${fmt(Math.abs(dDiff))} vs prev</div>` : ""}
+          ${prevRows.length ? `<div style="font-size:10px;color:${dDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${dDiff >= 0 ? "â" : "â"}${fmt(Math.abs(dDiff))} vs prev</div>` : ""}
         </div>
         <div style="text-align:center;padding:12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
           <div style="font-size:20px;font-weight:700;color:#dc2626">${fmt(totRec)}</div>
           <div style="font-size:10px;color:#6b7280;margin-top:2px">Receive</div>
-          ${prevRows.length ? `<div style="font-size:10px;color:${rDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${rDiff >= 0 ? "↑" : "↓"}${fmt(Math.abs(rDiff))} vs prev</div>` : ""}
+          ${prevRows.length ? `<div style="font-size:10px;color:${rDiff >= 0 ? "#16a34a" : "#dc2626"};margin-top:2px">${rDiff >= 0 ? "â" : "â"}${fmt(Math.abs(rDiff))} vs prev</div>` : ""}
         </div>
         <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
           <div style="font-size:20px;font-weight:700;color:#059669">${fmt(curBal)}</div>
@@ -6881,7 +6896,7 @@ function rptRanking() {
     return { loc, i, totDel, totRec, curBal, eff };
   }).sort((a, b) => b.eff - a.eff);
 
-  const medals = ["🥇", "🥈", "🥉", "4th", "5th", "6th", "7th", "8th"];
+  const medals = ["ð¥", "ð¥", "ð¥", "4th", "5th", "6th", "7th", "8th"];
 
   const rangeLbl = rptMs.length === 1
     ? `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${rptMs[0].split("-")[0]}`
@@ -6951,8 +6966,8 @@ function rptPeak() {
     </div>`;
 
   return `<div style="display:flex;gap:24px;flex-wrap:wrap">
-    ${half(topDel, "tDel", "🔝 Top 5 Delivery Days", "#2563eb")}
-    ${half(topRec, "tRec", "🔝 Top 5 Receive Days", "#dc2626")}
+    ${half(topDel, "tDel", "ð Top 5 Delivery Days", "#2563eb")}
+    ${half(topRec, "tRec", "ð Top 5 Receive Days", "#dc2626")}
   </div>`;
 }
 
@@ -6965,7 +6980,7 @@ function rptFlow() {
       <th>Month</th>
       <th>Opening Balance</th>
       <th>+ Receive</th>
-      <th>− Delivery</th>
+      <th>â Delivery</th>
       <th>Closing Balance</th>
       <th>Net Change</th>
     </tr></thead><tbody>`;
@@ -6981,10 +6996,10 @@ function rptFlow() {
     const s = summ(k);
     const net = closing - opening;
     html += `<tr class="${k === cur ? "current" : ""}">
-      <td class="month" ${k === rptFocus ? 'style="font-weight:900;color:#1d4ed8"' : ""}>${MO[m - 1]} ${y}${k === rptFocus ? " ★" : ""}</td>
+      <td class="month" ${k === rptFocus ? 'style="font-weight:900;color:#1d4ed8"' : ""}>${MO[m - 1]} ${y}${k === rptFocus ? " â" : ""}</td>
       <td style="font-weight:700">${fmt(opening)}</td>
       <td style="color:#dc2626;font-weight:700">+${fmt(s.imp)}</td>
-      <td style="color:#2563eb;font-weight:700">−${fmt(s.del)}</td>
+      <td style="color:#2563eb;font-weight:700">â${fmt(s.del)}</td>
       <td style="color:#059669;font-weight:700">${fmt(closing)}</td>
       <td style="font-weight:700;color:${net >= 0 ? "#16a34a" : "#dc2626"}">${net >= 0 ? "+" : ""}${fmt(net)}</td>
     </tr>`;
@@ -7019,7 +7034,7 @@ function rptDow() {
     const bar = Math.round((avgDel / maxAvg) * 100);
     const isOff = (d === 5 && sett.fri) || (d === 6 && sett.sat) || (d === 0 && sett.sun);
     html += `<tr style="${isOff ? "background:#fef2f2" : ""}">
-      <td style="font-weight:700;color:${isOff ? "#991b1b" : "#1f2937"}">${s.lbl}${isOff ? " 🔴" : ""}</td>
+      <td style="font-weight:700;color:${isOff ? "#991b1b" : "#1f2937"}">${s.lbl}${isOff ? " ð´" : ""}</td>
       <td style="color:#2563eb;font-weight:700">${fmt(avgDel)}</td>
       <td style="color:#dc2626;font-weight:700">${fmt(avgRec)}</td>
       <td style="color:#6b7280">${s.cnt}</td>
@@ -7051,18 +7066,18 @@ function rptTransfers() {
   let totalQty = 0;
   let html = `<div class="simple-table-container"><table class="simple-table">
     <thead><tr>
-      <th>Date</th><th>From</th><th>→</th><th>To</th><th>Qty</th><th>Note</th>
+      <th>Date</th><th>From</th><th>â</th><th>To</th><th>Qty</th><th>Note</th>
     </tr></thead><tbody>`;
 
   rangeTxs.forEach(([date, txs]) => {
     (txs || []).forEach((t) => {
       totalQty += t.qty || 0;
-      const fromLoc = (t.from != null && LOCS[t.from]) ? LOCS[t.from] : (t.from || "—");
-      const toLoc = (t.to != null && LOCS[t.to]) ? LOCS[t.to] : (t.to || "—");
+      const fromLoc = (t.from != null && LOCS[t.from]) ? LOCS[t.from] : (t.from || "â");
+      const toLoc = (t.to != null && LOCS[t.to]) ? LOCS[t.to] : (t.to || "â");
       html += `<tr>
         <td style="font-weight:700">${esc(date)}</td>
         <td style="color:#dc2626;font-weight:600">${esc(fromLoc)}</td>
-        <td style="color:#6b7280">→</td>
+        <td style="color:#6b7280">â</td>
         <td style="color:#16a34a;font-weight:600">${esc(toLoc)}</td>
         <td style="font-weight:700;color:#7c3aed;font-size:14px">${fmt(t.qty || 0)}</td>
         <td style="color:#6b7280;font-size:11px">${esc(t.note || "")}</td>
@@ -7088,7 +7103,7 @@ function rptYoY() {
 
   const availablePrev = prevMs.filter((k) => DB[k] && DB[k].length);
   if (!availablePrev.length)
-    return `<p style="color:#9ca3af;text-align:center;padding:20px">No previous year data — year-over-year comparison unavailable.</p>`;
+    return `<p style="color:#9ca3af;text-align:center;padding:20px">No previous year data â year-over-year comparison unavailable.</p>`;
 
   let totDel = 0, totImp = 0, prevDel = 0, prevImp = 0, totBal = 0;
   rptMs.forEach((k) => {
@@ -7108,10 +7123,10 @@ function rptYoY() {
   const [lastM] = rptMs[rptMs.length - 1].split("-").map(Number);
   const rangeLbl = rptMs.length === 1
     ? `${MO[lastM - 1]} ${curY}`
-    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${curY} → ${MO[lastM - 1]} ${curY}`;
+    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${curY} â ${MO[lastM - 1]} ${curY}`;
   const prevRangeLbl = rptMs.length === 1
     ? `${MO[lastM - 1]} ${lastY}`
-    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${lastY} → ${MO[lastM - 1]} ${lastY}`;
+    : `${MO[parseInt(rptMs[0].split("-")[1]) - 1]} ${lastY} â ${MO[lastM - 1]} ${lastY}`;
 
   const kpis = [
     { lbl: "Total Receive",  c: totImp, p: prevImp, col: "#dc2626" },
@@ -7141,11 +7156,11 @@ function rptYoY() {
       <td style="font-weight:700;color:${r.col}">${fmt(r.c)}${r.pct ? "%" : ""}</td>
       <td style="color:#64748b">${fmt(r.p)}${r.pct ? "%" : ""}</td>
       <td style="font-weight:700;color:${dc}">${diff >= 0 ? "+" : ""}${fmt(diff)}${r.pct ? "%" : ""}</td>
-      <td style="font-weight:700;color:${dc}">${diff >= 0 ? "↑" : "↓"}${Math.abs(pctV)}%</td>
+      <td style="font-weight:700;color:${dc}">${diff >= 0 ? "â" : "â"}${Math.abs(pctV)}%</td>
     </tr>`;
   });
 
-  html += `<tr style="background:#f8fafc"><td colspan="5" style="text-align:left;font-weight:700;color:#374151;padding:10px">📍 Per-Location Delivery Comparison</td></tr>`;
+  html += `<tr style="background:#f8fafc"><td colspan="5" style="text-align:left;font-weight:700;color:#374151;padding:10px">ð Per-Location Delivery Comparison</td></tr>`;
 
   LOCS.forEach((loc, i) => {
     let cDel = 0, pDel = 0;
@@ -7161,16 +7176,16 @@ function rptYoY() {
       <td style="color:#2563eb;font-weight:700">${fmt(cDel)}</td>
       <td style="color:#64748b">${fmt(pDel)}</td>
       <td style="color:${dc};font-weight:700">${diff >= 0 ? "+" : ""}${fmt(diff)}</td>
-      <td style="color:${dc};font-weight:700">${diff >= 0 ? "↑" : "↓"}${Math.abs(pctV)}%</td>
+      <td style="color:${dc};font-weight:700">${diff >= 0 ? "â" : "â"}${Math.abs(pctV)}%</td>
     </tr>`;
   });
 
   return html + "</tbody></table></div>";
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  AUCTION DELIVERY REPORT
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 function getAuctionRows() {
   const from = auctionFilter.from;
@@ -7195,7 +7210,7 @@ function syncAuctionFilterUI() {
   if (toEl) toEl.value = auctionFilter.to || "";
   if (badge) {
     if (auctionFilter.from || auctionFilter.to) {
-      badge.textContent = `Filtered: ${auctionFilter.from || "start"} → ${auctionFilter.to || "today"}`;
+      badge.textContent = `Filtered: ${auctionFilter.from || "start"} â ${auctionFilter.to || "today"}`;
     } else {
       badge.textContent = "Showing all available data";
     }
@@ -7211,7 +7226,7 @@ function syncAuctionFilterBadge() {
   const badge = document.getElementById("auc-filter-badge");
   if (!badge) return;
   badge.textContent = (from || to)
-    ? `Custom: ${from || "start"} → ${to || "today"}`
+    ? `Custom: ${from || "start"} â ${to || "today"}`
     : "Showing all available data";
 }
 
@@ -7243,7 +7258,7 @@ function applyAuctionPreset(preset) {
   } else if (preset === "ytd") {
     from = `${today.getFullYear()}-01-01`; to = todayStr;
   }
-  // "all" → from/to stay ""
+  // "all" â from/to stay ""
 
   auctionFilter.from = from;
   auctionFilter.to = to;
@@ -7316,7 +7331,7 @@ function renderAuctionReport() {
   if (!rows.length) {
     return `
       <div class="auc-empty">
-        <div class="auc-empty-icon">🚗</div>
+        <div class="auc-empty-icon">ð</div>
         <div class="auc-empty-title">No auction data found</div>
         <div class="auc-empty-sub">No records match the selected date range. Try a different filter.</div>
       </div>`;
@@ -7341,16 +7356,16 @@ function renderAuctionReport() {
     if (!peakRow || v > (parseInt(peakRow.av) || 0)) peakRow = r;
   });
   const peakVal = peakRow ? (parseInt(peakRow.av) || 0) : 0;
-  const peakDate = peakRow && peakVal > 0 ? peakRow.date : "—";
+  const peakDate = peakRow && peakVal > 0 ? peakRow.date : "â";
   const avgPerDay = rows.length > 0 ? (totalAuc / rows.length).toFixed(1) : "0.0";
   const avgActiveDay = activeDays > 0 ? (totalAuc / activeDays).toFixed(1) : "0.0";
 
-  // ── KPI Grid ──────────────────────────────────────
+  // ââ KPI Grid ââââââââââââââââââââââââââââââââââââââ
   const kpiHtml = `
     <div class="auc-kpi-grid">
       <div class="auc-kpi-card">
         <div class="auc-kpi-top">
-          <div class="auc-kpi-icon-wrap">🚗</div>
+          <div class="auc-kpi-icon-wrap">ð</div>
           <span class="auc-kpi-tag">Total</span>
         </div>
         <div class="auc-kpi-val">${fmt(totalAuc)}</div>
@@ -7358,7 +7373,7 @@ function renderAuctionReport() {
       </div>
       <div class="auc-kpi-card">
         <div class="auc-kpi-top">
-          <div class="auc-kpi-icon-wrap">📊</div>
+          <div class="auc-kpi-icon-wrap">ð</div>
           <span class="auc-kpi-tag">Share</span>
         </div>
         <div class="auc-kpi-val">${aucShare}%</div>
@@ -7367,7 +7382,7 @@ function renderAuctionReport() {
       </div>
       <div class="auc-kpi-card">
         <div class="auc-kpi-top">
-          <div class="auc-kpi-icon-wrap">📅</div>
+          <div class="auc-kpi-icon-wrap">ð</div>
           <span class="auc-kpi-tag">Activity</span>
         </div>
         <div class="auc-kpi-val">${activeDays}</div>
@@ -7376,7 +7391,7 @@ function renderAuctionReport() {
       </div>
       <div class="auc-kpi-card">
         <div class="auc-kpi-top">
-          <div class="auc-kpi-icon-wrap">🏆</div>
+          <div class="auc-kpi-icon-wrap">ð</div>
           <span class="auc-kpi-tag">Peak</span>
         </div>
         <div class="auc-kpi-val">${fmt(peakVal)}</div>
@@ -7384,28 +7399,28 @@ function renderAuctionReport() {
         <div class="auc-kpi-sub">${peakDate}</div>
       </div>
       <div class="auc-kpi-card secondary">
-        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">📍</div></div>
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">ð</div></div>
         <div class="auc-kpi-val">${uniqueLocs}</div>
         <div class="auc-kpi-lbl">Unique Locations</div>
       </div>
       <div class="auc-kpi-card secondary">
-        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">📈</div></div>
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">ð</div></div>
         <div class="auc-kpi-val">${avgPerDay}</div>
         <div class="auc-kpi-lbl">Avg / All Days</div>
       </div>
       <div class="auc-kpi-card secondary">
-        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">⚡</div></div>
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">â¡</div></div>
         <div class="auc-kpi-val">${avgActiveDay}</div>
         <div class="auc-kpi-lbl">Avg / Active Day</div>
       </div>
       <div class="auc-kpi-card secondary">
-        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">🗓️</div></div>
+        <div class="auc-kpi-top"><div class="auc-kpi-icon-wrap">ðï¸</div></div>
         <div class="auc-kpi-val">${rows.length}</div>
         <div class="auc-kpi-lbl">Days in Range</div>
       </div>
     </div>`;
 
-  // ── Location Breakdown ────────────────────────────
+  // ââ Location Breakdown ââââââââââââââââââââââââââââ
   const sortedLocs = Object.entries(locMap).sort((a, b) => b[1].total - a[1].total);
   const maxLocTotal = sortedLocs[0]?.[1].total || 1;
   let locHtml = "";
@@ -7428,7 +7443,7 @@ function renderAuctionReport() {
           </div>
           <div class="auc-loc-stat-col">
             <div class="auc-loc-stat">${fmt(d.total)}</div>
-            <div class="auc-loc-meta">${d.days}d · avg ${avg}</div>
+            <div class="auc-loc-meta">${d.days}d Â· avg ${avg}</div>
           </div>
           <div class="auc-loc-share-pill">${share}%</div>
         </div>`;
@@ -7436,7 +7451,7 @@ function renderAuctionReport() {
     locHtml += `</div>`;
   }
 
-  // ── Monthly Trend ─────────────────────────────────
+  // ââ Monthly Trend âââââââââââââââââââââââââââââââââ
   const monthMap = {};
   rows.forEach(r => {
     const m = r.date?.substring(0, 7);
@@ -7468,7 +7483,7 @@ function renderAuctionReport() {
     monthHtml += `</div>`;
   }
 
-  // ── Daily Breakdown ───────────────────────────────
+  // ââ Daily Breakdown âââââââââââââââââââââââââââââââ
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let dailyHtml = `
     <div class="auc-daily-wrap">
@@ -7498,9 +7513,9 @@ function renderAuctionReport() {
             <span class="auc-day-tag ${isWeekend ? "is-weekend" : ""}">${dayName}</span>
           </div>
         </td>
-        <td><span class="auc-loc-chip ${hasLoc ? "active" : ""}">${esc(r.al) || "—"}</span></td>
+        <td><span class="auc-loc-chip ${hasLoc ? "active" : ""}">${esc(r.al) || "â"}</span></td>
         <td style="text-align:right">
-          ${aucV > 0 ? `<span class="auc-auc-val">${fmt(aucV)}</span>` : `<span class="auc-auc-nil">—</span>`}
+          ${aucV > 0 ? `<span class="auc-auc-val">${fmt(aucV)}</span>` : `<span class="auc-auc-nil">â</span>`}
         </td>
         <td style="text-align:right;font-weight:600;color:#475569;font-variant-numeric:tabular-nums">${fmt(regV)}</td>
         <td>
@@ -7520,7 +7535,7 @@ function renderAuctionReport() {
     ${kpiHtml}
     <div class="auc-section-card">
       <div class="auc-section-hdr">
-        <div class="auc-section-icon">📍</div>
+        <div class="auc-section-icon">ð</div>
         <h3 class="auc-section-title">By Auction Location</h3>
         <span class="auc-section-count">${sortedLocs.length} location${sortedLocs.length !== 1 ? "s" : ""}</span>
       </div>
@@ -7529,7 +7544,7 @@ function renderAuctionReport() {
     ${sortedMonths.length > 1 ? `
     <div class="auc-section-card">
       <div class="auc-section-hdr">
-        <div class="auc-section-icon">📅</div>
+        <div class="auc-section-icon">ð</div>
         <h3 class="auc-section-title">Monthly Trend</h3>
         <span class="auc-section-count">${sortedMonths.length} months</span>
       </div>
@@ -7537,7 +7552,7 @@ function renderAuctionReport() {
     </div>` : ""}
     <div class="auc-section-card">
       <div class="auc-section-hdr">
-        <div class="auc-section-icon">📋</div>
+        <div class="auc-section-icon">ð</div>
         <h3 class="auc-section-title">Daily Breakdown</h3>
         <span class="auc-section-count">${rows.length} day${rows.length !== 1 ? "s" : ""}</span>
       </div>
@@ -7600,9 +7615,9 @@ function exportReport() {
   }
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  EXPORT
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function doExport() {
   document.getElementById("ov-export").classList.remove("on");
   const type = document.querySelector('input[name="exp"]:checked').value;
@@ -7670,9 +7685,9 @@ function doExport() {
   );
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  PAGE NAV
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 let curPage = "daily";
 function showPage(p, el) {
   curPage = p;
@@ -7689,9 +7704,9 @@ function showPage(p, el) {
   if (p === "transfer") renderTransferPage();
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  KEYBOARD SHORTCUTS
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const SHORTCUTS = {
   "Ctrl+S": () => doSave(),
   "Ctrl+Z": () => undoLast(),
@@ -7802,9 +7817,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  LOADING MANAGEMENT
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function showLoading(text = "Loading...") {
   const overlay = document.getElementById("loading-overlay");
   const loadingText = overlay.querySelector(".loading-text");
@@ -7829,7 +7844,7 @@ function showErrorOverlay(msg) {
     el = document.createElement("div");
     el.id = "error-overlay";
     el.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:99999;opacity:0;transition:opacity 0.3s ease;";
-    el.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px 32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div id="error-msg" style="font-size:14px;color:#374151;margin-bottom:16px;word-break:break-word"></div><button onclick="document.getElementById(\'error-overlay\').style.display=\'none\'" style="background:#ef4444;color:#fff;border:none;padding:8px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Dismiss</button></div>';
+    el.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px 32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center"><div style="font-size:32px;margin-bottom:8px">â ï¸</div><div id="error-msg" style="font-size:14px;color:#374151;margin-bottom:16px;word-break:break-word"></div><button onclick="document.getElementById(\'error-overlay\').style.display=\'none\'" style="background:#ef4444;color:#fff;border:none;padding:8px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Dismiss</button></div>';
     document.body.appendChild(el);
     requestAnimationFrame(() => { el.style.opacity = "1"; });
   }
@@ -7916,9 +7931,9 @@ function fixMonthTransitions() {
   });
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  RENDER ALL
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function renderAll() {
   showLoading("Loading data...");
 
@@ -7949,9 +7964,9 @@ function renderAll() {
   }, 100);
 }
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  INIT
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function updateCurrentDate() {
   const currentDate = new Date();
   const options = {
@@ -8015,7 +8030,7 @@ function init() {
       // Show connected status
       if (firebaseDb) {
         const gsStatus = document.getElementById("gs-status");
-        if (gsStatus) { gsStatus.innerHTML = '<span style="color:#22c55e">✅ Connected to cloud (GitHub)</span>'; }
+        if (gsStatus) { gsStatus.innerHTML = '<span style="color:#22c55e">â Connected to cloud (GitHub)</span>'; }
       }
     });
     const n = new Date();
@@ -8290,9 +8305,9 @@ function ensureAllMonthsHaveColumns() {
 }
 init();
 
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 //  SERVICE WORKER REGISTRATION & PWA SETUP
-// ════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // Register service worker for offline functionality
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
