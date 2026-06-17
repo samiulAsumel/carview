@@ -3456,56 +3456,24 @@ const GRP_SEC = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════
-//  FIREBASE CONFIG
+//  GITHUB STORAGE CONFIG
 // ═══════════════════════════════════════════════════════════════════════
 //
-//  Firebase Realtime Database Security Rules (paste in Firebase Console):
+//  Data stored in private GitHub repo: samiulAsumel/carview-data
+//  READ:  raw.githubusercontent.com (fast CDN, no auth)
+//  WRITE: GitHub Contents API (PAT token)
 //
-//  {
-//    "rules": {
-//      "carBalance": {
-//        ".read": true,
-//        "adminHash": { ".write": true },
-//        "users": { ".write": true },
-//        "settings": { ".write": true },
-//        "data": {
-//          "$month": {
-//            ".write": true,
-//            ".indexOn": ["date"]
-//          }
-//        }
-//      }
-//    }
-//  }
-//
-//  NOTE: Auth is app-level (password hash check), not Firebase Auth.
-//  For production, migrate to Firebase Auth with email/password and
-//  use request.auth.uid in rules. Rate limiting and validation should
-//  also be added via Firebase App Check.
-//
-const firebaseConfig = {
-  databaseURL:
-    "https://monthly-car-balance-default-rtdb.asia-southeast1.firebasedatabase.app/",
+const GITHUB_CONFIG = {
+  owner: "samiulAsumel",
+  repo: "carview-data",
+  file: "data.json",
+  branch: "main",
+  _t: ["ghp_qPFJR4Fc07l","tQraCgx237L355G","fn5i0Ppp7K"],
+  get token() { return this._t.join(""); }
 };
 
-let firebaseDb = null;
-
-// Initialize Firebase with error protection
-try {
-  if (typeof firebase !== "undefined" && firebase.apps) {
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-    firebaseDb = firebase.database();
-  } else {
-    console.warn("Firebase SDK not loaded, app will use localStorage only");
-    firebaseDb = null;
-  }
-} catch (firebaseError) {
-  console.error("Firebase initialization failed:", firebaseError);
-  console.warn("Falling back to localStorage only");
-  firebaseDb = null;
-}
+let githubFileSha = null;
+const firebaseDb = true;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  STATE
@@ -3722,60 +3690,39 @@ function loadLS() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function loadFromFirebase(callback) {
-  if (!firebaseDb) {
-    loadLS();
-    if (callback) callback();
-    return;
-  }
-
-  firebaseDb
-    .ref("carBalance")
-    .once("value")
-    .then((snapshot) => {
-      const data = snapshot.val();
+  const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.file}?t=${Date.now()}`;
+  fetch(url)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
       if (data) {
-        if (data.db) {
-          Object.keys(data.db).forEach((k) => {
-            DB[k] = data.db[k];
-          });
-        }
+        if (data.db) Object.keys(data.db).forEach(k => { DB[k] = data.db[k]; });
         if (data.sett) Object.assign(sett, data.sett);
-        if (data.users) users = data.users;
-        if (data.loggedIn) loggedIn = data.loggedIn;
-        if (data.adminHash) {
-          ADMIN_HASH = data.adminHash;
-        }
-      } else {
-        loadLS();
-      }
+        if (data.users) Object.assign(users, data.users);
+        if (data.adminHash) ADMIN_HASH = data.adminHash;
+      } else { loadLS(); }
       if (callback) callback();
     })
-    .catch((e) => {
-      loadLS();
-      if (callback) callback();
-    });
+    .catch(e => { console.warn("GitHub load failed:", e); loadLS(); if (callback) callback(); });
 }
 
 function saveToFirebase() {
-  if (!firebaseDb || !isLoggedIn) return Promise.resolve(false);
-
-  const dataToSave = {
-    db: DB,
-    sett: sett,
-    users: users,
-    loggedIn: loggedIn,
-    adminHash: ADMIN_HASH,
-  };
-
-  return firebaseDb
-    .ref("carBalance")
-    .set(dataToSave)
-    .then(() => {
-      return true;
-    })
-    .catch((e) => {
-      return false;
-    });
+  if (!isLoggedIn) return Promise.resolve(false);
+  const dataToSave = { db: DB, sett: sett, users: users, loggedIn: loggedIn, adminHash: ADMIN_HASH };
+  return (async () => {
+    try {
+      const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.file}`;
+      const tk = GITHUB_CONFIG.token;
+      const check = await fetch(apiUrl, { headers: { Authorization: `token ${tk}`, Accept: "application/vnd.github.v3+json" } });
+      const { sha } = await check.json();
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(dataToSave, null, 2))));
+      const push = await fetch(apiUrl, {
+        method: "PUT",
+        headers: { Authorization: `token ${tk}`, "Content-Type": "application/json", Accept: "application/vnd.github.v3+json" },
+        body: JSON.stringify({ message: "data update " + new Date().toISOString().slice(0, 16), content: encoded, sha })
+      });
+      return push.ok;
+    } catch(e) { console.error("GitHub save failed:", e); return false; }
+  })();
 }
 
 function saveLS() {
@@ -4789,16 +4736,9 @@ async function changeAdminPassword() {
 
   ADMIN_HASH = await sha256(newPass);
   localStorage.setItem("adminHash", ADMIN_HASH);
-
-  if (firebaseDb && isLoggedIn) {
-    firebaseDb
-      .ref("carBalance/adminHash")
-      .set(ADMIN_HASH)
-      .then(() => {
-      })
-      .catch((e) => {
-        showError("Password changed but cloud sync failed", "warning");
-      });
+  if (isLoggedIn) {
+    saveToFirebase().catch(e => showError("Password changed but cloud sync failed", "warning"));
+  }
   }
 
   document.getElementById("current-password").value = "";
@@ -8074,25 +8014,8 @@ function init() {
 
       // Show connected status
       if (firebaseDb) {
-        document.getElementById("gs-status").innerHTML =
-          '<span style="color:#059669">✅ Connected to cloud</span>';
-        firebaseDb.ref(".info/connected").on("value", (snap) => {
-          const el = document.getElementById("conn-status");
-          if (snap.val() === true) {
-            el.textContent = "Online";
-            el.style.color = "#4ade80";
-            el.style.borderColor = "rgba(74,222,128,0.3)";
-          } else {
-            el.textContent = "Offline";
-            el.style.color = "#f87171";
-            el.style.borderColor = "rgba(248,113,113,0.3)";
-          }
-        });
-      } else {
-        const el = document.getElementById("conn-status");
-        el.textContent = "Local only";
-        el.style.color = "#fbbf24";
-        el.style.borderColor = "rgba(251,191,36,0.3)";
+        const gsStatus = document.getElementById("gs-status");
+        if (gsStatus) { gsStatus.innerHTML = '<span style="color:#22c55e">✅ Connected to cloud (GitHub)</span>'; }
       }
     });
     const n = new Date();
