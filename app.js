@@ -3636,6 +3636,9 @@ function buildHist() {
     if (!r.v || !Array.isArray(r.v)) return;
     const key = r.d.slice(0, 7);
     if (!DB[key]) DB[key] = [];
+    // Never create a duplicate date: if this day already exists (e.g. loaded
+    // from the cloud), skip the embedded historical seed for it.
+    if (DB[key].some((x) => x.date === r.d)) return;
     const del = [];
     const imp = [];
     for (let i = 0; i < LOCS.length; i++) {
@@ -3738,11 +3741,30 @@ function loadFromFirebase(callback) {
             const m = data.db[k];
             // Firebase stored arrays as numeric-keyed objects; coerce back to
             // an array so the rest of the app (which expects arrays) works.
-            DB[k] = Array.isArray(m)
+            const arr = Array.isArray(m)
               ? m
               : Object.keys(m)
                   .sort((a, b) => Number(a) - Number(b))
                   .map((i) => m[i]);
+            // Self-heal: drop duplicate dates (old migrations left an empty
+            // extra row on the 1st), keeping the row with real data.
+            const weight = (r) =>
+              ["bal", "del", "imp", "ob"].reduce(
+                (s, key) =>
+                  s +
+                  (Array.isArray(r[key])
+                    ? r[key].reduce((a, v) => a + Math.abs(Number(v) || 0), 0)
+                    : 0),
+                0,
+              );
+            const seen = {};
+            arr.forEach((r) => {
+              if (!seen[r.date] || weight(r) > weight(seen[r.date]))
+                seen[r.date] = r;
+            });
+            DB[k] = Object.keys(seen)
+              .sort()
+              .map((d) => seen[d]);
           });
         }
         if (data.sett) Object.assign(sett, data.sett);

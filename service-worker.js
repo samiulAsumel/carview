@@ -1,4 +1,4 @@
-const CACHE_NAME = 'car-balance-v5';
+const CACHE_NAME = 'car-balance-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -24,7 +24,7 @@ async function cacheFirst(request) {
   }
 }
 
-// Network-first for cloud data (falls back to cache when offline)
+// Network-first for Firebase data (falls back to cache)
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
@@ -62,8 +62,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Cloud data (Cloudflare Worker proxy) — network first
-  if (url.hostname.includes('workers.dev')) {
+  // Firebase / Google APIs — network first
+  if (
+    url.hostname.includes('firebaseio.com') ||
+    url.hostname.includes('firebasedatabase.app') ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('gstatic.com')
+  ) {
     event.respondWith(networkFirst(event.request));
     return;
   }
