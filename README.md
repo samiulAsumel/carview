@@ -2,7 +2,7 @@
 
 **Mongla Port Authority • Traffic Department**
 
-A zero-dependency, offline-first vehicle tracking system for managing daily car movements across multiple port locations. Built for deployment via `file://` protocol with Firebase cloud sync.
+A zero-dependency, offline-first vehicle tracking system for managing daily car movements across multiple port locations. Runs from the `file://` protocol or static hosting, with cloud sync via a Cloudflare Worker that commits to a private GitHub repository (every save is a commit, so nothing is ever lost).
 
 ---
 
@@ -16,14 +16,14 @@ A zero-dependency, offline-first vehicle tracking system for managing daily car 
 6. Track inter-location movements on the **Car Transfer** tab
 7. Export data as Excel via the top bar (current month or all months)
 
-**No server required.** The app runs entirely from local files and syncs to Firebase when online.
+**No server required.** The app runs entirely from local files and syncs to the cloud (Cloudflare Worker → private GitHub repo) when online. All dates are shown as `dd-mm-yyyy`.
 
 ---
 
 ## Features
 
 ### Daily Entry
-- 8-location vehicle tracking (Warehouse-A/B, Yard-1/2, Shed-3/4/5/6)
+- 8-location vehicle tracking (Warehouse-A/B, Yard No-1/7, Shed No-5/6/7/8)
 - Opening/closing balance auto-calculation
 - Holiday/weekend day marking (red rows)
 - **Bangladesh Government Holiday Calendar** — one-click load of the official
@@ -39,7 +39,7 @@ Each date is evaluated in this order:
 2. Else if it is **Friday/Saturday** (or Sunday) and that weekly-holiday toggle is on → red.
 3. Else if it is in the **holiday list** (manual or loaded from the BD calendar) → red.
 
-**Future years are partly automatic.** The dropdown always lists upcoming years, and **fixed-date national holidays** (Feb 21, Mar 26, Apr 14, May 1, Aug 5, Dec 16, Dec 25) are generated automatically for any year via the `BD_FIXED` table — no edit needed. Only **moon-dependent dates** (Eid, Ashura, Milad-un-Nabi, Puja, Buddha Purnima, etc.) must be bundled, since they have no fixed date and are set yearly by the government gazette. To bundle them for a new year, copy a year block in the `BD_HOLIDAYS` table in `app.js` and change the key and dates — or just add them per-day with "Add Custom Red Date".
+**Future years are partly automatic.** The dropdown always lists upcoming years, and **fixed-date national holidays** (Feb 21, Mar 26, Apr 14, May 1, Aug 5, Dec 16, Dec 25) are generated automatically for any year via the `BD_FIXED` table in `src/app.js` — no edit needed. Only **moon-dependent dates** (Eid, Ashura, Milad-un-Nabi, Puja, Buddha Purnima, etc.) must be bundled, since they have no fixed date and are set yearly by the government gazette. To bundle them for a new year, copy a year block in the `BD_HOLIDAYS` table in `src/app.js` and change the key and dates — or just add them per-day with "Add Custom Red Date".
 
 ### Analytics Dashboard (Charts)
 - 7 focused charts: daily receive vs delivery, closing balance, month comparison, location performance, balance trend, net flow
@@ -64,13 +64,18 @@ Each date is evaluated in this order:
 ### Car Transfer
 - Track inter-location car movements
 - Full transfer history with date, source, destination, and quantity
+- Transfers cascade opening balances forward across subsequent months
 
 ### Data Management
 - **LocalStorage** primary storage (works offline)
-- **Firebase Realtime Database** optional cloud sync
+- **Cloud sync** via a Cloudflare Worker that commits a single `data.json` to a private GitHub repo (`carview-data`). The GitHub token never reaches the browser — it lives only in the Worker. See `docs/SETUP-GITHUB-SYNC.md`.
+- **Version History & restore** — every save is a GitHub commit, so any previous version can be restored from the in-app history (Settings → Cloud Sync)
+- **Overwrite protection** — concurrent edits from another device are detected (SHA conflict) and warned instead of silently clobbered
+- **Save feedback** — distinguishes "✓ Saved to cloud!" from "⚠ Saved to device only!" (the latter signals the cloud write failed, e.g. expired token)
 - Excel export (current month or all months)
+- All dates display as **dd-mm-yyyy**; manual date-entry fields use **dd/mm/yyyy** with auto-formatting (stored internally as `YYYY-MM-DD`)
 - SHA-256 password hashing for admin access
-- Role-based user authentication
+- Role-based user authentication (admin + up to 3 users)
 - Auto-save with dirty-state tracking
 
 ### Security
@@ -85,14 +90,25 @@ Each date is evaluated in this order:
 
 ## File Structure
 
-| File | Purpose | Lines |
-|---|---|---|
-| `index.html` | Application shell + UI | ~1,024 |
-| `app.js` | All application logic | ~8,409 |
-| `styles.css` | Responsive styling + print CSS | ~4,011 |
-| `service-worker.js` | PWA offline caching | ~3KB |
-| `manifest.json` | Web app manifest | ~1KB |
-| `car.png` | App icon/logo | Image |
+```
+.
+├── index.html              # entry / app shell (must stay at root)
+├── manifest.json           # PWA manifest (root; referenced as /manifest.json)
+├── service-worker.js       # PWA cache (MUST be root for SW scope; bump CACHE_NAME on every code change)
+├── README.md
+├── CLAUDE.md               # guidance for Claude Code
+├── src/
+│   ├── app.js              # all application logic (~8,800 lines)
+│   └── styles.css          # responsive + print CSS (~4,000 lines)
+├── assets/
+│   └── car.png             # app logo
+├── worker/
+│   └── worker.js           # Cloudflare Worker (deployed separately, not loaded by the app)
+└── docs/
+    └── SETUP-GITHUB-SYNC.md  # one-time cloud sync setup guide
+```
+
+> `index.html`, `manifest.json`, and `service-worker.js` must stay at the repo root: the service worker can only control pages at or below its own path, and the entry/manifest are referenced from root. Everything `index.html` loads (`src/app.js`, `src/styles.css`, `assets/car.png`) and the SW cache list use matching paths.
 
 ---
 
@@ -112,46 +128,48 @@ Each date is evaluated in this order:
 │  │ Worker (SW)  │  │ (primary store)  │     │
 │  └──────────────┘  └──────────────────┘     │
 │                              │               │
-│                              ▼ (when online) │
-│                    ┌──────────────────┐      │
-│                    │ Firebase RTDB    │      │
-│                    │ (cloud sync)     │      │
-│                    └──────────────────┘      │
-└─────────────────────────────────────────────┘
+└──────────────────────────────┼──────────────┘
+                                ▼ (when online)
+                   ┌─────────────────────────┐
+                   │  Cloudflare Worker       │   GET data.json
+                   │  (carview-proxy)         │   GET ?history / ?at=<sha>
+                   │  holds GitHub token      │   PUT  (commit, auth + 409 guard)
+                   └─────────────────────────┘
+                                │
+                                ▼
+                   ┌─────────────────────────┐
+                   │  GitHub repo carview-data│
+                   │  (private) → data.json   │   1 commit per save
+                   └─────────────────────────┘
 ```
+
+App code (`carview` repo) is served from Cloudflare Pages; the data (`carview-data` repo) and the Worker are separate. The browser only ever talks to the Worker — `GITHUB_CONFIG.workerUrl` in `src/app.js` must match the `connect-src` Worker URL in the `index.html` CSP.
 
 ### External Dependencies (CDN)
 - **Chart.js 4.4.0** — Data visualization
 - **SheetJS (XLSX) 0.18.5** — Excel export
-- **Firebase 9.22.0 SDK** — Cloud sync (optional)
 
-All dependencies load from CDNs with Subresource Integrity (SRI) hashes. Password hashing uses the browser's built-in Web Crypto API (no extra library). The app degrades gracefully if CDN access is unavailable.
+All dependencies load from CDNs with Subresource Integrity (SRI) hashes. Cloud sync needs no SDK in the browser (plain `fetch` to the Worker); password hashing uses the browser's built-in Web Crypto API. The app degrades gracefully if CDN access is unavailable.
 
 ---
 
 ## Configuration
 
-### Firebase Setup (Optional)
+### Cloud Sync Setup
 
-Edit the Firebase config block in `index.html`:
+Cloud sync uses a Cloudflare Worker (`worker/worker.js`) plus a private GitHub repo (`carview-data`). Full one-time setup steps are in **`docs/SETUP-GITHUB-SYNC.md`**. In short:
 
-```javascript
-const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
-  databaseURL: "https://YOUR-PROJECT.firebaseio.com",
-  projectId: "...",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "..."
-};
-```
+1. Create a fine-grained GitHub PAT with **Contents: Read & Write** on `carview-data`.
+2. Deploy `worker/worker.js` to a Cloudflare Worker and add two secrets: `GITHUB_TOKEN` and `WRITE_PASSWORD` (the admin login password).
+3. Point `GITHUB_CONFIG.workerUrl` in `src/app.js` and the CSP `connect-src` in `index.html` at the Worker URL.
 
-Without Firebase, all data stays in `localStorage`.
+Without the Worker configured, all data stays in `localStorage`.
+
+> **Note:** the fine-grained PAT has an expiry — when it expires, saves fail and fall back to device-only. Renew it in the Worker's `GITHUB_TOKEN` secret. If you change the admin password, update `WRITE_PASSWORD` too.
 
 ### Location Configuration
 
-Edit `LOCS` array and `LOC_CFG` object in `app.js` to customize location names and colors.
+Edit the `LOCS` array and `LOC_CFG` object in `src/app.js` to customize location names and colors. The number of locations (currently 8) drives the per-row `del`/`imp`/`bal`/`ob` array lengths.
 
 ---
 
@@ -193,21 +211,12 @@ Edit `LOCS` array and `LOC_CFG` object in `app.js` to customize location names a
 ## Deployment
 
 ### Option 1: Direct File Access
-Simply open `index.html` in a browser. No server needed.
+Simply open `index.html` in a browser. No server needed. (Service worker / PWA install are unavailable on `file://`; cloud sync still works.)
 
 ### Option 2: Static Hosting
-Deploy to any static host:
-- Firebase Hosting
-- GitHub Pages
-- Netlify
-- Vercel
-- Nginx/Apache
+Deploy to any static host — the production setup uses **Cloudflare Pages** (`carview.pages.dev`). Also works on GitHub Pages, Netlify, Vercel, Nginx/Apache.
 
-### Option 3: Firebase Hosting
-```bash
-firebase init hosting
-firebase deploy
-```
+The Cloudflare Worker (`worker/worker.js`) is deployed separately from the app — see `docs/SETUP-GITHUB-SYNC.md`.
 
 ---
 
@@ -215,12 +224,17 @@ firebase deploy
 
 - PWA install prompt requires HTTPS (not available on `file://`)
 - Service worker requires a server context (not available on `file://`)
-- Firebase sync requires internet connection
-- Export requires SheetJS CDN to load
+- Cloud sync requires an internet connection and a configured Worker
+- Native date pickers display in the browser's locale; manual date fields use custom `dd/mm/yyyy` text inputs to stay consistent
+- Export requires the SheetJS CDN to load
 
 ---
 
 ## Version
+
+**1.4.0** — `dd-mm-yyyy` dates everywhere (manual fields use `dd/mm/yyyy` inputs); Bangladesh Government Holiday Calendar loader with auto-generated fixed national holidays (June 2026)
+
+**1.3.0** — Migrated cloud sync from Firebase to a Cloudflare Worker + private GitHub repo, with version history, restore, and overwrite protection (June 2026)
 
 **1.2.0** — Security hardening: XSS escaping on user data, strict CSP, SRI hashes on CDN scripts, 8-character password minimum, default-password warning (June 2026)
 
