@@ -1,10 +1,10 @@
-# CarView — GitHub Sync Setup (Banglish)
+# CarView — GitHub Sync Setup
 
-Firebase soriye GitHub + Cloudflare Worker-e migrate kora hoyeche.
+Cloud sync was migrated from Firebase to GitHub + a Cloudflare Worker.
 
-- **App** (`carview` repo) -> Cloudflare Pages -> carview.pages.dev
-- **Data** (`carview-data` repo, PRIVATE) -> sudhu `data.json`
-- **Worker** (`carview-proxy.sa-sumel91.workers.dev`) -> app ar private repo-r majhe proxy. GitHub token sudhu Worker-er bhitore thake, browser-e kokhono ashe na.
+- **App** (`carview` repo) → Cloudflare Pages → carview.pages.dev
+- **Data** (`carview-data` repo, PRIVATE) → a single `data.json`
+- **Worker** (`carview-proxy.sa-sumel91.workers.dev`) → a proxy between the app and the private repo. The GitHub token lives only inside the Worker and is never exposed to the browser.
 
 ```
 Viewer/Browser  --GET-->  Worker  --(token)-->  GitHub (read data.json)
@@ -13,60 +13,61 @@ You (logged in) --PUT-->  Worker  --(token)-->  GitHub (commit data.json)
 
 ---
 
-## Ekbar-er setup (15 min)
+## One-time setup (15 min)
 
-### 1. GitHub token (PAT) banao
+### 1. Create a GitHub token (PAT)
 
-1. GitHub -> Settings -> Developer settings -> **Fine-grained tokens** -> "Generate new token".
-2. **Repository access** -> "Only select repositories" -> `carview-data` select koro.
-3. **Permissions** -> Repository permissions -> **Contents: Read and write**.
-4. Generate kore token-ta copy koro (`github_pat_...`). Eta ekbar-i dekhabe.
+1. GitHub → Settings → Developer settings → **Fine-grained tokens** → "Generate new token".
+2. **Repository access** → "Only select repositories" → select `carview-data`.
+3. **Permissions** → Repository permissions → **Contents: Read and write**.
+4. Generate and copy the token (`github_pat_...`). It is shown only once.
 
-### 2. Worker-e code ar secret boshao
+### 2. Add the code and secrets to the Worker
 
-1. Cloudflare dashboard -> Workers & Pages -> `carview-proxy` open koro (already ache).
-2. Edit code -> purono code muche **`worker.js`**-er pura code paste koro -> Deploy.
-3. Settings -> **Variables and Secrets** -> ei duita **Secret** add koro:
-   - `GITHUB_TOKEN`  = step-1 er PAT
-   - `WRITE_PASSWORD` = tomar app-er login password
+1. Cloudflare dashboard → Workers & Pages → open `carview-proxy` (already created).
+2. Edit code → delete the old code → paste the full contents of **`worker/worker.js`** → Deploy.
+3. Settings → **Variables and Secrets** → add these two as **Secret**:
+   - `GITHUB_TOKEN`  = the PAT from step 1
+   - `WRITE_PASSWORD` = your app login password
 4. Deploy / Save.
 
-> Type "Secret" rakhba (Text na), jate value lukano thake.
+> Set the type to "Secret" (not "Text") so the values stay hidden.
 
 ### 3. Test
 
-- Browser-e `https://carview-proxy.sa-sumel91.workers.dev` kholo -> data.json-er JSON dekha gele READ thik ache.
-- carview.pages.dev -> login -> ekta entry change kore Save -> "Saved to cloud" elে WRITE thik ache.
-- GitHub `carview-data` -> Commits -> notun "Update data ..." commit dekhbe.
+- Open `https://carview-proxy.sa-sumel91.workers.dev` in a browser — if you see the JSON of `data.json`, READ works.
+- Open carview.pages.dev → log in → change an entry and Save → if you see "Saved to cloud", WRITE works.
+- GitHub `carview-data` → Commits → you should see a new "Update data ..." commit.
 
 ---
 
 ## Daily use
 
-- Tumi jekono device/browser theke id+password diye login korba -> auto-save cloud-e jabe.
-- Onno keu (login chara) sudhu dekhte parbe, edit/save parbe na.
-- **Protita save = ekta GitHub commit.** Tai purono kono version kokhono harabe na -- GitHub-er Commit history theke jekono purono data fire ana jay.
+- Log in with your id and password from any device/browser → changes auto-save to the cloud.
+- Anyone else (not logged in) can only view; they cannot edit or save.
+- **Every save is one GitHub commit.** No version is ever lost — any previous version can be restored from the GitHub commit history.
 
-## Notun feature
+## Features
 
-GitHub history kaje lagiye 3-ta notun feature add kora hoyeche (Settings → Cloud Sync panel-e):
+Three features built on top of the GitHub history (Settings → Cloud Sync panel):
 
-- **Version History (📜)** — purono protita save-er list. Ek click-e jekono purono version **Restore** kora jay. Restore korle eta notun commit hisebe boshe, purono kichu mochena.
-- **Overwrite protection** — duita device theke edit korle, purono data overwrite hobar age warning dey ("reload kore abar Save korun").
-- **Last saved** — sesh kobe cloud-e save hoyeche seta dekhay.
+- **Version History (📜)** — a list of every previous save. Any version can be **Restored** with one click. A restore is committed as a new version, so nothing is deleted.
+- **Overwrite protection** — if two devices edit at once, you are warned before older data is overwritten ("reload the page and save again").
+- **Last saved** — shows when the data was last saved to the cloud.
 
-## Khoyal rakho
+## Notes
 
-- **Password change korle** Worker-er `WRITE_PASSWORD` secret-o new password-e update korte hobe, na hole save reject hobe.
-- Sob free tier-er bhitore: Worker 100k req/din free, GitHub repo free, Pages free.
+- **If you change the password**, also update the Worker's `WRITE_PASSWORD` secret to the new password, otherwise saves are rejected.
+- Everything stays within free tiers: Worker 100k requests/day free, GitHub repo free, Pages free.
+- The fine-grained PAT has an expiry — when it expires, saves fall back to device-only. Renew it in the Worker's `GITHUB_TOKEN` secret.
 
 ---
 
-## Ki ki change holo (technical)
+## What changed (technical)
 
 | File | Change |
 |------|--------|
-| `app.js` | Firebase config/init -> `GITHUB_CONFIG` + Worker. `loadFromFirebase` = Worker GET. `saveToFirebase` = Worker PUT (+ `X-Write-Key`). Login-e `writeAuth` derive. Password-change ar connected-status-er Firebase call soriye Worker/static kora hoyeche. |
-| `index.html` | CSP `connect-src` -> Worker domain. UI label Firebase -> GitHub. |
-| `service-worker.js` | Cache `v4` -> `v5`. Cloud data network-first routing Worker host-e. |
-| `worker.js` | **Notun** — Cloudflare Worker (GET read, `?history=1` commit list, `?at=<sha>` old version, PUT write with auth + overwrite-conflict check). |
+| `src/app.js` | Firebase config/init → `GITHUB_CONFIG` + Worker. `loadFromFirebase` = Worker GET. `saveToFirebase` = Worker PUT (+ `X-Write-Key`). Login derives `writeAuth`. Firebase calls for password-change and connected-status replaced with Worker/static logic. |
+| `index.html` | CSP `connect-src` → Worker domain. UI labels Firebase → GitHub. |
+| `service-worker.js` | Cloud data uses network-first routing to the Worker host. (Bump `CACHE_NAME` on every code change.) |
+| `worker/worker.js` | **New** — Cloudflare Worker (GET read, `?history=1` commit list, `?at=<sha>` old version, PUT write with auth + overwrite-conflict check). |
