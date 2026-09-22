@@ -2602,18 +2602,21 @@ function tableKeyNav(e) {
 document.getElementById("main-tbl").addEventListener("keydown", tableKeyNav);
 
 // Smooth, low-latency mouse-wheel / trackpad scrolling for the desktop
-// table pane (#tbl-scroll). By default the browser moves the pane an
-// instant, jarring jump per wheel notch, and the jump's size is whatever
-// the OS/mouse reports (often several rows at once). This instead moves
-// a fixed, predictable distance per notch — about 4 rows — eased over a
-// short duration so it feels like a deliberate step rather than a jump
-// or a slow drift. Kept short (150ms) so it stays responsive during
-// fast, repeated scrolling and never feels laggy — each new wheel tick
-// simply re-aims the animation from wherever it currently is, rather
-// than queuing a delay. Keyboard row navigation (tableKeyNav above) is
-// untouched: it uses focus({preventScroll:true}) and never triggers
-// this. Scroll-boundary passthrough (already at top/bottom) is
-// preserved so the outer page can still scroll normally.
+// table pane (#tbl-scroll). A traditional mouse wheel sends one large
+// wheel event per physical notch (deltaY roughly 100+ in Chrome); for
+// that we move a fixed, predictable distance — about 4 rows — eased
+// over a short duration, so every notch feels like the same deliberate
+// step instead of an instant, unpredictable-sized jump. A trackpad
+// instead sends a stream of many small deltaY events per swipe; for
+// those (below NOTCH_THRESHOLD) we just follow the raw delta directly,
+// since treating each one as a full "notch" would rocket the table to
+// the bottom on a single swipe. Kept short (150ms) so it stays
+// responsive during fast, repeated scrolling and never feels laggy —
+// each new wheel tick simply re-aims the animation from wherever it
+// currently is, rather than queuing a delay. Keyboard row navigation
+// (tableKeyNav above) is untouched: it uses focus({preventScroll:true})
+// and never triggers this. Scroll-boundary passthrough (already at
+// top/bottom) is preserved so the outer page can still scroll normally.
 (function initSmoothWheelScroll() {
   const wrap = document.getElementById("tbl-scroll");
   if (!wrap) return;
@@ -2624,6 +2627,7 @@ document.getElementById("main-tbl").addEventListener("keydown", tableKeyNav);
     return;
 
   const ROWS_PER_TICK = 4;
+  const NOTCH_THRESHOLD = 40; // px; below this, treat as trackpad/continuous input
   const DURATION = 150; // ms
   const FALLBACK_ROW_HEIGHT = 32;
   let targetTop = null;
@@ -2668,9 +2672,12 @@ document.getElementById("main-tbl").addEventListener("keydown", tableKeyNav);
 
       e.preventDefault();
 
-      const stepPx = ROWS_PER_TICK * getRowHeight();
+      const increment =
+        Math.abs(e.deltaY) >= NOTCH_THRESHOLD
+          ? dir * ROWS_PER_TICK * getRowHeight()
+          : e.deltaY;
       const base = targetTop === null ? wrap.scrollTop : targetTop;
-      targetTop = Math.max(0, Math.min(max, base + dir * stepPx));
+      targetTop = Math.max(0, Math.min(max, base + increment));
       animFrom = wrap.scrollTop;
       animStart = performance.now();
       if (!rafId) rafId = requestAnimationFrame(step);
