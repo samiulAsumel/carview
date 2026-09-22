@@ -2600,6 +2600,76 @@ function tableKeyNav(e) {
   }
 }
 document.getElementById("main-tbl").addEventListener("keydown", tableKeyNav);
+
+// Smooth, low-latency mouse-wheel / trackpad scrolling for the desktop
+// table pane (#tbl-scroll). By default the browser moves the pane an
+// instant, jarring jump per wheel notch; this eases each notch over a
+// short duration instead. Kept intentionally short (130ms) so it stays
+// responsive during fast, repeated scrolling and never feels laggy —
+// each new wheel tick simply re-aims the animation from wherever it
+// currently is, rather than queuing a delay. Keyboard row navigation
+// (tableKeyNav above) is untouched: it uses focus({preventScroll:true})
+// and never triggers this. Scroll-boundary passthrough (already at top/
+// bottom) is preserved so the outer page can still scroll normally.
+(function initSmoothWheelScroll() {
+  const wrap = document.getElementById("tbl-scroll");
+  if (!wrap) return;
+  if (
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+    return;
+
+  const DURATION = 130; // ms
+  const LINE_HEIGHT = 24;
+  let targetTop = null;
+  let animFrom = 0;
+  let animStart = 0;
+  let rafId = null;
+
+  function easeOutQuad(t) {
+    return 1 - (1 - t) * (1 - t);
+  }
+
+  function step(now) {
+    const t = Math.min(1, (now - animStart) / DURATION);
+    wrap.scrollTop = animFrom + (targetTop - animFrom) * easeOutQuad(t);
+    if (t < 1) {
+      rafId = requestAnimationFrame(step);
+    } else {
+      rafId = null;
+      targetTop = null;
+    }
+  }
+
+  wrap.addEventListener(
+    "wheel",
+    (e) => {
+      if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+
+      const max = wrap.scrollHeight - wrap.clientHeight;
+      if (max <= 0) return;
+
+      const atTop = wrap.scrollTop <= 0 && e.deltaY < 0;
+      const atBottom = wrap.scrollTop >= max && e.deltaY > 0;
+      if (atTop || atBottom) return; // let the outer page scroll instead
+
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= LINE_HEIGHT;
+      else if (e.deltaMode === 2) dy *= wrap.clientHeight;
+
+      e.preventDefault();
+
+      const base = targetTop === null ? wrap.scrollTop : targetTop;
+      targetTop = Math.max(0, Math.min(max, base + dy));
+      animFrom = wrap.scrollTop;
+      animStart = performance.now();
+      if (!rafId) rafId = requestAnimationFrame(step);
+    },
+    { passive: false },
+  );
+})();
+
 window.addEventListener("resize", updateStickyTableOffsets);
 window.addEventListener("resize", updateStickyHeaderOffsets);
 
