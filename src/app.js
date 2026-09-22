@@ -1857,7 +1857,7 @@ function editRotNo(td, key, ri) {
     const saved = DB[key][ri].rn || "";
     td.innerHTML = `<input class="rot-edit" type="text" maxlength="30" value="${esc(saved)}" placeholder="Enter Rot No">`;
     const inp = td.querySelector("input");
-    inp.focus();
+    inp.focus({ preventScroll: true });
     inp.select();
     const commit = () => {
       const val = inp.value.trim().slice(0, 30);
@@ -2431,7 +2431,7 @@ function renderTable() {
     const newInput =
       newTr && newTr.querySelector(`input.ci[data-col="${focusRestore.col}"]`);
     if (newInput) {
-      newInput.focus();
+      newInput.focus({ preventScroll: true });
       try {
         newInput.setSelectionRange(focusRestore.selStart, focusRestore.selEnd);
       } catch {}
@@ -2578,7 +2578,7 @@ function tableKeyNav(e) {
     const next = key === "ArrowLeft" ? all[idx - 1] : all[idx + 1];
     if (next) {
       e.preventDefault();
-      next.focus();
+      next.focus({ preventScroll: true });
       next.select();
     }
     return;
