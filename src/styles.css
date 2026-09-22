@@ -2288,6 +2288,15 @@ select {
   border-radius: 16px;
   position: relative;
   z-index: 2;
+  /* renderTable() replaces the entire <tbody> on every edit (see
+     app.js). Chrome's CSS Scroll Anchoring then "helpfully" re-anchors
+     this pane to whatever new node lands near the old anchor point,
+     which measurably shifts scrollTop (confirmed ~45px in testing) even
+     though the focus-restore code below already asks for
+     { preventScroll: true } — anchoring is a separate mechanism focus
+     options don't control. Opting this pane out is the standard fix for
+     "content swapped, scroll jumped" caused by a full-subtree replace. */
+  overflow-anchor: none;
 }
 
 /* ── TABLE STRUCTURE ── */
