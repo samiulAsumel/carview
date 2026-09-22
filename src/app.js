@@ -2548,7 +2548,7 @@ function renderDayCards() {
         ? card.querySelector("input.ci.auc")
         : card.querySelector(`input.ci.${focusRestore.field}[data-li="${focusRestore.li}"]`));
     if (input) {
-      input.focus();
+      input.focus({ preventScroll: true });
       try {
         input.setSelectionRange(focusRestore.selStart, focusRestore.selEnd);
       } catch {}
@@ -2595,7 +2595,7 @@ function tableKeyNav(e) {
     targetRow && targetRow.querySelector(`input.ci[data-col="${col}"]`);
   if (isVisible(targetInput)) {
     e.preventDefault();
-    targetInput.focus();
+    targetInput.focus({ preventScroll: true });
     targetInput.select();
   }
 }
